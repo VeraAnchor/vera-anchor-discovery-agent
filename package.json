@@ -12,6 +12,7 @@
     "dev": "concurrently \"npm run dev -w @vera-discovery/agent-api\" \"npm run dev -w @vera-discovery/web\"",
     "dev:api": "npm run dev -w @vera-discovery/agent-api",
     "dev:web": "npm run dev -w @vera-discovery/web",
+    "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
   "engines": {
