@@ -3,11 +3,23 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run typecheck"
   },
   "dependencies": {
-    "js-sha3": "^0.9.3"
+    "@vera-discovery/hashing-core": "file:../hashing-core"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }
