@@ -1,0 +1,23 @@
+{
+  "name": "vera-discovery-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hedera Agent Kit MCP/x402 gateway for Vera Anchor public evidence discovery and paid proof-bundle export.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @vera-discovery/agent-api\" \"npm run dev -w @vera-discovery/web\"",
+    "dev:api": "npm run dev -w @vera-discovery/agent-api",
+    "dev:web": "npm run dev -w @vera-discovery/web",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

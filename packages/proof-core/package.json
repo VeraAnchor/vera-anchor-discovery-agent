@@ -1,0 +1,13 @@
+{
+  "name": "@vera-discovery/proof-core",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "js-sha3": "^0.9.3"
+  }
+}

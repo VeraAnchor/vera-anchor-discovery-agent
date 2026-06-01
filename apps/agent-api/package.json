@@ -1,0 +1,20 @@
+{
+  "name": "@vera-discovery/agent-api",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.68.0",
+    "@vera-discovery/proof-core": "file:../../packages/proof-core",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "js-sha3": "^0.9.3",
+    "uuid": "^11.0.5",
+    "zod": "^3.24.1"
+  }
+}
