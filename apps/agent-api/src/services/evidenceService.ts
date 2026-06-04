@@ -86,6 +86,10 @@ function normalizeType(value: unknown): EvidenceKind | "all" {
 
   rejectControlChars(s, "type");
 
+  if (s === "all") {
+    return "all";
+  }
+
   if (
     s === "sage_result" ||
     s === "cipher_result" ||
@@ -254,6 +258,38 @@ const localEvidenceRecords: readonly NormalizedEvidenceRecord[] = [
   }),
 ];
 
+const QUERY_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "can",
+  "for",
+  "from",
+  "in",
+  "is",
+  "me",
+  "of",
+  "on",
+  "please",
+  "public",
+  "show",
+  "the",
+  "this",
+  "to",
+  "what",
+  "with",
+]);
+
+function queryTokens(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/[^a-z0-9_.:@-]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .filter((token) => !QUERY_STOP_WORDS.has(token));
+}
+
 function matchesQuery(record: NormalizedEvidenceRecord, query: string): boolean {
   if (!query) return true;
 
@@ -272,7 +308,17 @@ function matchesQuery(record: NormalizedEvidenceRecord, query: string): boolean 
     .join(" ")
     .toLowerCase();
 
-  return haystack.includes(query);
+  if (haystack.includes(query)) {
+    return true;
+  }
+
+  const tokens = queryTokens(query);
+
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  return tokens.every((token) => haystack.includes(token));
 }
 
 function matchesType(record: NormalizedEvidenceRecord, type: EvidenceKind | "all"): boolean {
