@@ -13,7 +13,15 @@
     "dev:api": "npm run dev -w @vera-discovery/agent-api",
     "dev:web": "npm run dev -w @vera-discovery/web",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:agent-api": "npm run test -w @vera-discovery/agent-api",
+    "test:mcp-tools": "npm run test:mcp-tools -w @vera-discovery/agent-api",
+    "test:mcp-stdio": "npm run test:mcp-stdio -w @vera-discovery/agent-api",
+    "test:mcp": "npm run test:mcp -w @vera-discovery/agent-api",
+    "test:hedera-agent": "npm run test:hedera-agent -w @vera-discovery/agent-api",
+    "test:agent-integrations": "npm run test:agent-integrations -w @vera-discovery/agent-api",
+    "mcp:stdio": "npm run mcp:stdio -w @vera-discovery/agent-api"
   },
   "engines": {
     "node": ">=20.11.0"

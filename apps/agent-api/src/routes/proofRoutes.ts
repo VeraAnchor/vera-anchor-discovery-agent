@@ -1,10 +1,20 @@
+// apps/agent-api/src/routes/proofRoutes.ts
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { getProofReceipt } from "../services/proofExecutionService.js";
+import { buildAgentServiceContext } from "./routeContext.js";
 
 const ProofParamsSchema = z.object({
-  receiptId: z.string().min(1).max(128),
+  receiptId: z.string().uuid(),
 });
+
+type ProofReceiptPayload = Readonly<{
+  proof_bundle?: unknown;
+  proof_bundle_hash?: unknown;
+  proof_card?: unknown;
+  proof_card_hash?: unknown;
+}>;
 
 function htmlEscape(value: unknown): string {
   return String(value ?? "")
@@ -28,12 +38,47 @@ function sendHtml(reply: FastifyReply, html: string) {
     .send(html);
 }
 
+function receiptPayload(receipt: { payload: Record<string, unknown> }): ProofReceiptPayload {
+  return receipt.payload as ProofReceiptPayload;
+}
+
+function proofBundleHashOf(receipt: {
+  receipt_hash: string;
+  artifact_hash: string | null;
+  payload: Record<string, unknown>;
+}): string {
+  const payload = receiptPayload(receipt);
+
+  if (typeof payload.proof_bundle_hash === "string" && payload.proof_bundle_hash.trim()) {
+    return payload.proof_bundle_hash;
+  }
+
+  if (receipt.artifact_hash) {
+    return receipt.artifact_hash;
+  }
+
+  return receipt.receipt_hash;
+}
+
+function proofCardHashOf(receipt: {
+  payload: Record<string, unknown>;
+}): string | null {
+  const payload = receiptPayload(receipt);
+
+  return typeof payload.proof_card_hash === "string" && payload.proof_card_hash.trim()
+    ? payload.proof_card_hash
+    : null;
+}
+
 export async function proofRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     "/v1/receipts/:receiptId",
     async (req: FastifyRequest, reply: FastifyReply) => {
       const params = ProofParamsSchema.parse(req.params);
-      const receipt = getProofReceipt(params.receiptId);
+      const receipt = await getProofReceipt(
+        params.receiptId,
+        buildAgentServiceContext(req),
+      );
 
       if (!receipt) {
         return reply.code(404).send({
@@ -43,14 +88,17 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.send(receipt);
-    }
+    },
   );
 
   app.get(
     "/proof-bundles/:receiptId",
     async (req: FastifyRequest, reply: FastifyReply) => {
       const params = ProofParamsSchema.parse(req.params);
-      const receipt = getProofReceipt(params.receiptId);
+      const receipt = await getProofReceipt(
+        params.receiptId,
+        buildAgentServiceContext(req),
+      );
 
       if (!receipt) {
         return reply
@@ -58,6 +106,10 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
           .header("content-type", "text/html; charset=utf-8")
           .send("Proof bundle not found");
       }
+
+      const payload = receiptPayload(receipt);
+      const proofBundle = payload.proof_bundle ?? payload;
+      const bundleHash = proofBundleHashOf(receipt);
 
       return sendHtml(reply, `
         <!doctype html>
@@ -162,11 +214,11 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
                   </div>
                   <div class="fact">
                     <div class="label">Bundle hash</div>
-                    <div class="value">${htmlEscape(receipt.proof_bundle_hash)}</div>
+                    <div class="value">${htmlEscape(bundleHash)}</div>
                   </div>
                   <div class="fact">
                     <div class="label">Short hash</div>
-                    <div class="value">${htmlEscape(shortHash(receipt.proof_bundle_hash))}</div>
+                    <div class="value">${htmlEscape(shortHash(bundleHash))}</div>
                   </div>
                   <div class="fact">
                     <div class="label">Created</div>
@@ -180,20 +232,23 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
                   <a href="/v1/receipts/${encodeURIComponent(receipt.id)}">Open receipt JSON</a>
                 </p>
 
-                <pre>${htmlEscape(JSON.stringify(receipt.proof_bundle, null, 2))}</pre>
+                <pre>${htmlEscape(JSON.stringify(proofBundle, null, 2))}</pre>
               </section>
             </main>
           </body>
         </html>
       `);
-    }
+    },
   );
 
   app.get(
     "/proof-cards/:receiptId",
     async (req: FastifyRequest, reply: FastifyReply) => {
       const params = ProofParamsSchema.parse(req.params);
-      const receipt = getProofReceipt(params.receiptId);
+      const receipt = await getProofReceipt(
+        params.receiptId,
+        buildAgentServiceContext(req),
+      );
 
       if (!receipt) {
         return reply
@@ -202,7 +257,13 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
           .send("Proof card not found");
       }
 
-      const proofCard = receipt.proof_card as Record<string, unknown>;
+      const payload = receiptPayload(receipt);
+      const proofCard =
+        payload.proof_card && typeof payload.proof_card === "object"
+          ? (payload.proof_card as Record<string, unknown>)
+          : {};
+      const bundleHash = proofBundleHashOf(receipt);
+      const cardHash = proofCardHashOf(receipt);
 
       return sendHtml(reply, `
         <!doctype html>
@@ -338,11 +399,11 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
                   </div>
                   <div class="fact">
                     <div class="label">Proof bundle hash</div>
-                    <div class="value">${htmlEscape(proofCard.proofBundleHash || receipt.proof_bundle_hash)}</div>
+                    <div class="value">${htmlEscape(proofCard.proofBundleHash || bundleHash)}</div>
                   </div>
                   <div class="fact">
                     <div class="label">Proof card hash</div>
-                    <div class="value">${htmlEscape(proofCard.proofCardHash || receipt.proof_card_hash || "")}</div>
+                    <div class="value">${htmlEscape(proofCard.proofCardHash || cardHash || "")}</div>
                   </div>
                   <div class="fact">
                     <div class="label">Public anchor</div>
@@ -369,6 +430,6 @@ export async function proofRoutes(app: FastifyInstance): Promise<void> {
           </body>
         </html>
       `);
-    }
+    },
   );
 }

@@ -14,6 +14,9 @@ import { evidenceRoutes } from "./routes/evidenceRoutes.js";
 import { quoteRoutes } from "./routes/quoteRoutes.js";
 import { actionRoutes } from "./routes/actionRoutes.js";
 import { proofRoutes } from "./routes/proofRoutes.js";
+import { hederaAgentRoutes } from "./routes/hederaAgentRoutes.js";
+import { bootstrapAgentDb } from "./db/dbBootstrap.js";
+import { closeAgentDb } from "./db/db.js";
 
 type ReqWithTiming = FastifyRequest & { _reqStartNs?: bigint };
 
@@ -183,6 +186,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(quoteRoutes);
   await app.register(actionRoutes);
   await app.register(proofRoutes);
+  await app.register(hederaAgentRoutes);
 
   app.get("/", async (_req: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
@@ -191,6 +195,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         "Hedera Agent Kit MCP/x402 gateway for Vera Anchor Explorer discovery and paid proof-bundle export.",
       health: "/healthz",
       ready: "/readyz",
+      hedera_agent_status: "/v1/hedera/agent/status",
     });
   });
 
@@ -233,6 +238,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
 async function main(): Promise<void> {
   const app = await buildApp();
+
+  app.addHook("onClose", async () => {
+    await closeAgentDb();
+  });
+
+  app.log.info("agent_db_bootstrap_start");
+  await bootstrapAgentDb();
+  app.log.info("agent_db_bootstrap_complete");
 
   await app.ready();
   app.log.info({ routes: app.printRoutes() }, "route_tree");
