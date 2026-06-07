@@ -1148,7 +1148,7 @@ async function searchLivePublicEvidence(input: {
 
   const fallbackRecords: NormalizedEvidenceRecord[] = [];
 
-  for (const inputType of ["cipher_result", "sage_result", "dataset"] as const) {
+  for (const inputType of ["cipher_result", "sage_result", "dataset", "hcs_transaction"] as const) {
     if (inferredType === inputType) continue;
 
     fallbackRecords.push(...(await runForType(inputType)));

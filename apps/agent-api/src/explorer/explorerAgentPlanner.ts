@@ -70,6 +70,8 @@ const COMPUTE_ALIASES = [
 ];
 
 const DATASET_ALIASES = [
+  "data",
+  "recent data",
   "dataset registry",
   "public data",
   "public dataset",
@@ -85,6 +87,10 @@ const HCS_ALIASES = [
   "hcs transactions",
   "hcs tx",
   "hcs txs",
+  "hcs data",
+  "hcs record",
+  "hcs records",
+  "hedera data",
   "hedera transaction",
   "hedera transactions",
   "anchor transaction",
@@ -265,14 +271,6 @@ function explicitEvidenceTypeFromTokens(
   if (tokens.has("sage")) return "sage_result";
 
   if (
-    tokens.has("dataset") ||
-    tokens.has("datasets") ||
-    tokens.has("registry")
-  ) {
-    return "dataset";
-  }
-
-  if (
     tokens.has("hcs") ||
     tokens.has("hedera") ||
     tokens.has("tx") ||
@@ -283,6 +281,15 @@ function explicitEvidenceTypeFromTokens(
     tokens.has("anchors")
   ) {
     return "hcs_transaction";
+  }
+
+  if (
+    tokens.has("data") ||
+    tokens.has("dataset") ||
+    tokens.has("datasets") ||
+    tokens.has("registry")
+  ) {
+    return "dataset";
   }
 
   if (
@@ -722,7 +729,7 @@ function scoreEvidenceTypes(input: {
     add("sage_result", 30, "language mentioned compute result alias");
   }
 
-  if (hasToken(tokens, ["dataset", "datasets"])) {
+  if (hasToken(tokens, ["data", "dataset", "datasets"])) {
     add("dataset", 70, "language mentioned datasets");
   }
   if (includesAny(text, DATASET_ALIASES)) {
