@@ -35,6 +35,11 @@ type SelectedSubject = Readonly<{
   subjectId: string;
 }>;
 
+type SelectableEvidenceItem = Readonly<{
+  item: ExplorerAgentEvidenceItem;
+  subject: SelectedSubject;
+}>;
+
 type Props = Readonly<{
   selected: SelectedSubject;
   onSelectSubject: (subject: SelectedSubject) => void;
@@ -470,13 +475,18 @@ export function AgentQueryPanel({
   const [status, setStatus] = useState<"idle" | "querying" | "failed">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const selectableEvidenceItems = useMemo(() => {
-    return (result?.evidence_items ?? []).map((item) => ({
-      item,
-      subject: subjectFromEvidenceItem(item),
-    }));
+  const selectableEvidenceItems = useMemo((): SelectableEvidenceItem[] => {
+    return (result?.evidence_items ?? [])
+      .map((item) => ({
+        item,
+        subject: subjectFromEvidenceItem(item),
+      }))
+      .filter(
+        (entry): entry is SelectableEvidenceItem =>
+          Boolean(entry.subject),
+      );
   }, [result?.evidence_items]);
-
+  
   const selectableSources = useMemo(() => {
     return (result?.sources ?? [])
       .map((source) => ({
@@ -493,23 +503,25 @@ export function AgentQueryPanel({
     if (!result) return false;
 
     const selectedKey = `${selected.subjectType}:${selected.subjectId}`;
+
     const evidenceKeys = selectableEvidenceItems.map(
       ({ subject }) => `${subject.subjectType}:${subject.subjectId}`,
     );
+
     const sourceKeys = selectableSources.map(
       ({ subject }) => `${subject.subjectType}:${subject.subjectId}`,
     );
 
     return new Set([...evidenceKeys, ...sourceKeys]).has(selectedKey);
-  }, [
-    result,
-    selectableEvidenceItems,
-    selectableSources,
-    selected.subjectId,
-    selected.subjectType,
-  ]);
+    }, [
+      result,
+      selectableEvidenceItems,
+      selectableSources,
+      selected.subjectId,
+      selected.subjectType,
+    ]);
 
-  const reviewWarnings = useMemo(() => {
+    const reviewWarnings = useMemo(() => {
     return visibleWarnings(result?.warnings ?? []);
   }, [result?.warnings]);
 
@@ -634,19 +646,6 @@ export function AgentQueryPanel({
       setResult(completed);
       onResult?.(completed);
       setStatus("idle");
-      const firstEvidenceSubject = completed.evidence_items
-        .map(subjectFromEvidenceItem)
-        .find(Boolean);
-
-      const firstSourceSubject = completed.sources
-        .map(subjectFromAgentSource)
-        .find(Boolean);
-
-      const firstSubject = firstEvidenceSubject ?? firstSourceSubject;
-
-      if (nextMode === "search" && firstSubject) {
-        useSource(firstSubject);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AGENT_QUERY_FAILED");
       setStatus("failed");
