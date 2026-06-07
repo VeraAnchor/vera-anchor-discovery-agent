@@ -1,0 +1,126 @@
+services:
+  agent_db:
+    image: postgres:17-alpine
+    container_name: vera_agent_postgres
+    restart: unless-stopped
+    env_file: [./.env.docker]
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DATABASE}
+    volumes:
+      - agent_db_data:/var/lib/postgresql/data
+    networks:
+      - agent_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DATABASE} -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  agent_init:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: veraanchor/discovery-agent-api:local
+    profiles: ["init"]
+    restart: "no"
+    env_file: [./.env.bootstrap]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+
+      AGENT_DB_SSL: "false"
+      AGENT_DB_POOL_MAX: 8
+      AGENT_DB_STATEMENT_TIMEOUT_MS: 10000
+      AGENT_DB_IDLE_TIMEOUT_MS: 30000
+      AGENT_DB_CONCURRENCY: 8
+      AGENT_MIGRATION_CHECKSUM: "true"
+      AGENT_DB_BOOTSTRAP_ON_START: "true"
+
+      REQUEST_TIMEOUT_MS: 10000
+      KEEP_ALIVE_TIMEOUT_MS: 72000
+      BODY_LIMIT_BYTES: 262144
+      TRUST_PROXY: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    networks:
+      - agent_internal
+    init: true
+    depends_on:
+      agent_db:
+        condition: service_healthy
+    command:
+      [
+        "node",
+        "--input-type=module",
+        "-e",
+        "import('./apps/agent-api/dist/db/dbBootstrap.js').then(async ({ migrateAgentDb }) => { await migrateAgentDb({ executedBy: 'agent-init' }); console.info('agent_db_migration_complete'); }).catch((err) => { console.error(err); process.exit(1); })"
+      ]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  agent_api:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: veraanchor/discovery-agent-api:local
+    container_name: vera_agent_api
+    restart: unless-stopped
+    env_file: [./.env.docker]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      AGENT_API_PORT: 8787
+      LOG_LEVEL: info
+
+      VERA_PUBLIC_SITE_URL: ${VERA_PUBLIC_SITE_URL:-https://veraanchor.com}
+      VERA_PUBLIC_API_BASE_URL: ${VERA_PUBLIC_API_BASE_URL:-http://explorer_api:8088/v1}
+      EXPLORER_LIVE_EVIDENCE_ENABLED: ${EXPLORER_LIVE_EVIDENCE_ENABLED:-true}
+      EXPLORER_API_TIMEOUT_MS: ${EXPLORER_API_TIMEOUT_MS:-4000}
+      EXPLORER_API_MAX_RESPONSE_BYTES: ${EXPLORER_API_MAX_RESPONSE_BYTES:-262144}
+      EXPLORER_API_USER_AGENT: ${EXPLORER_API_USER_AGENT:-vera-discovery-agent/1.0}
+
+      AGENT_DB_SSL: "false"
+      AGENT_DB_POOL_MAX: 8
+      AGENT_DB_STATEMENT_TIMEOUT_MS: 10000
+      AGENT_DB_IDLE_TIMEOUT_MS: 30000
+      AGENT_DB_CONCURRENCY: 8
+      AGENT_MIGRATION_CHECKSUM: "true"
+
+      REQUEST_TIMEOUT_MS: 10000
+      KEEP_ALIVE_TIMEOUT_MS: 72000
+      BODY_LIMIT_BYTES: 262144
+      TRUST_PROXY: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    expose:
+      - "8787"
+    networks:
+      - agent_internal
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8787/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+networks:
+  agent_internal:
+    name: vera_agent_internal
+    internal: true
+  edge:
+    external: true
+
+volumes:
+  agent_db_data:
+    name: vera_agent_db_data
