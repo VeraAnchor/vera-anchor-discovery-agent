@@ -1,4 +1,4 @@
-// apps/agent-api/src/services/explorerAgentPlanner.ts
+// apps/agent-api/src/explorer/explorerAgentPlanner.ts
 
 import type {
   ExplorerAgentCompiledQuery,
@@ -14,6 +14,7 @@ import type {
 } from "../explorer/explorerAgentTypes.js";
 import { parseExplorerAgentTemporalRange } from "../explorer/explorerAgentTemporalParser.js";
 import { parseExplorerAgentQuantityConstraint } from "../explorer/explorerAgentQuantityParser.js";
+import { compileExplorerSearchText } from "./explorerAgentQueryText.js";
 
 export type ExplorerAgentPlannedQuery = Readonly<{
   normalized: ExplorerAgentNormalizedQueryInput;
@@ -138,6 +139,79 @@ function hasToken(tokens: Set<string>, values: readonly string[]): boolean {
 
 function includesAny(value: string, terms: readonly string[]): boolean {
   return terms.some((term) => value.includes(term));
+}
+
+function hasSearchVerb(tokens: Set<string>): boolean {
+  return hasToken(tokens, [
+    "find",
+    "search",
+    "show",
+    "get",
+    "give",
+    "lookup",
+    "look",
+    "need",
+    "want",
+  ]);
+}
+
+function hasEvidenceNoun(tokens: Set<string>): boolean {
+  return hasToken(tokens, [
+    "data",
+    "dataset",
+    "datasets",
+    "evidence",
+    "record",
+    "records",
+    "result",
+    "results",
+    "run",
+    "runs",
+    "proof",
+    "anchor",
+    "anchors",
+    "hcs",
+    "cipher",
+    "sage",
+  ]);
+}
+
+function isCapabilityRequest(input: {
+  text: string;
+  tokens: Set<string>;
+  searchText: string;
+}): boolean {
+  if (
+    includesAny(input.text, [
+      "what can you do",
+      "how do you work",
+      "what are your tools",
+      "what tools do you have",
+      "what are your capabilities",
+      "show capabilities",
+      "agent capabilities",
+    ])
+  ) {
+    return true;
+  }
+
+  if (hasToken(input.tokens, ["capabilities"])) {
+    return true;
+  }
+
+  if (!input.tokens.has("help")) {
+    return false;
+  }
+
+  if (input.searchText) {
+    return false;
+  }
+
+  if (hasSearchVerb(input.tokens) || hasEvidenceNoun(input.tokens)) {
+    return false;
+  }
+
+  return true;
 }
 
 function unique<T>(values: readonly T[]): T[] {
@@ -592,20 +666,14 @@ const SEARCH_CONTROL_TOKENS = new Set([
 ]);
 
 function compileSearchText(input: ExplorerAgentNormalizedQueryInput): string {
-  const withoutIdentifiers = input.question
-    .replace(HCS_TRANSACTION_ID_RE, " ")
-    .replace(UUID_RE, " ")
-    .replace(DATASET_KEY_HINT_RE, " ");
-
-  const tokens = withoutIdentifiers
-    .toLowerCase()
-    .split(/[^a-z0-9_@./:-]+/g)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2)
-    .filter((token) => !SEARCH_CONTROL_TOKENS.has(token))
-    .filter((token) => !/^\d+\.\d+\.\d+$/.test(token));
-
-  return unique(tokens).join(" ");
+  return compileExplorerSearchText(input.question, {
+    stripPatterns: [
+      HCS_TRANSACTION_ID_RE,
+      UUID_RE,
+      DATASET_KEY_HINT_RE,
+    ],
+    extraStopWords: SEARCH_CONTROL_TOKENS,
+  });
 }
 
 function scoreEvidenceTypes(input: {
@@ -743,11 +811,18 @@ function scoreIntent(input: {
     );
   }
 
+  const compiledSearchText = compileSearchText(input.normalized);
+
   if (
-    includesAny(text, ["what can you do", "how do you work", "what are your tools"]) ||
-    hasToken(tokens, ["capabilities", "help"])
+    isCapabilityRequest({
+      text,
+      tokens,
+      searchText: compiledSearchText,
+    })
   ) {
-    add("agent_capabilities", "capabilities", 90, ["capability/help request detected"]);
+    add("agent_capabilities", "capabilities", 90, [
+      "capability/help request detected",
+    ]);
   }
 
   if (input.normalized.hcsTransactionId) {
@@ -785,7 +860,7 @@ function scoreIntent(input: {
 
   if (
     input.evidenceTypes.length > 0 ||
-    compileSearchText(input.normalized).length > 0 ||
+    compiledSearchText.length > 0 ||
     hasConstraint(input.constraints, "strongest") ||
     hasConstraint(input.constraints, "recent") ||
     hasConstraint(input.constraints, "anchored") ||
@@ -971,8 +1046,8 @@ export function planExplorerAgentQuery(
       normalized: input,
     }),
     datasetKey: compiled.datasetKey,
-    verifiedOnly: input.verifiedOnly || hasConstraint(compiled.constraints, "verified"),
-    anchoredOnly: input.anchoredOnly || hasConstraint(compiled.constraints, "anchored"),
+    verifiedOnly: input.verifiedOnly,
+    anchoredOnly: input.anchoredOnly,
   };
 
   if (compiled.intent === "agent_capabilities") {

@@ -19,6 +19,14 @@ import {
   mapExplorerHcsTransactionToEvidence,
   pageItems,
 } from "../explorer/explorerEvidenceMapper.js";
+import {
+  compileExplorerSearchText,
+  expandExplorerSearchTexts,
+  matchExplorerQueryText,
+  normalizeExplorerText,
+  textMatchesExplorerToken,
+  tokenizeExplorerQuery,
+} from "../explorer/explorerAgentQueryText.js";
 
 const repos = createAgentRepos(agentDbPool);
 
@@ -338,49 +346,6 @@ const localEvidenceRecords: readonly NormalizedEvidenceRecord[] = [
   }),
 ];
 
-const QUERY_STOP_WORDS = new Set([
-  "a",
-  "about",
-  "an",
-  "and",
-  "are",
-  "can",
-  "could",
-  "evidence",
-  "explain",
-  "export",
-  "find",
-  "for",
-  "from",
-  "give",
-  "help",
-  "in",
-  "is",
-  "me",
-  "of",
-  "on",
-  "please",
-  "preview",
-  "proof",
-  "public",
-  "record",
-  "records",
-  "report",
-  "review",
-  "search",
-  "show",
-  "tell",
-  "the",
-  "this",
-  "to",
-  "trust",
-  "trusted",
-  "trustworthy",
-  "verify",
-  "what",
-  "with",
-]);
-
 const PROGRAM_QUERY_TOKENS = new Set(["sage", "cipher"]);
 const TYPE_QUERY_TOKENS = new Set([
   "anchor",
@@ -441,19 +406,8 @@ function uniqueStrings(values: readonly string[]): string[] {
   return out;
 }
 
-function queryTokens(query: string): string[] {
-  return uniqueStrings(
-    query
-      .toLowerCase()
-      .split(/[^a-z0-9_.:@-]+/g)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2)
-      .filter((token) => !QUERY_STOP_WORDS.has(token)),
-  );
-}
-
 function searchableText(record: NormalizedEvidenceRecord): string {
-  return [
+  return normalizeExplorerText([
     record.subject_type,
     record.subject_id,
     record.title,
@@ -464,9 +418,7 @@ function searchableText(record: NormalizedEvidenceRecord): string {
     record.proof_card_url,
     record.hcs_transaction_id ?? "",
     record.hcs_topic_id ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
+  ].join(" "));
 }
 
 function evidenceRecordDate(record: NormalizedEvidenceRecord): string | null {
@@ -508,14 +460,14 @@ function relevanceScore(record: NormalizedEvidenceRecord, query: string): number
   let score = 0;
 
   for (const token of tokens) {
-    if (!haystack.includes(token)) continue;
+    if (!textMatchesExplorerToken(haystack, token)) continue;
 
-    if (record.subject_id.toLowerCase().includes(token)) {
+    if (textMatchesExplorerToken(record.subject_id, token)) {
       score += 40;
       continue;
     }
 
-    if (record.title.toLowerCase().includes(token)) {
+    if (textMatchesExplorerToken(record.title, token)) {
       score += 25;
       continue;
     }
@@ -627,7 +579,7 @@ function inDateRange(input: {
 }
 
 function evidenceSearchTerms(query: string): string {
-  return queryTokens(query)
+  return tokenizeExplorerQuery(query)
     .filter((token) => !MODIFIER_QUERY_TOKENS.has(token))
     .join(" ");
 }
@@ -656,7 +608,7 @@ const ROUTING_QUERY_TOKENS = new Set([
 ]);
 
 function contentSearchTerms(query: string): string {
-  return queryTokens(query)
+  return tokenizeExplorerQuery(query)
     .filter((token) => !ROUTING_QUERY_TOKENS.has(token))
     .join(" ");
 }
@@ -671,7 +623,7 @@ function matchTokensForRecord(
   record: NormalizedEvidenceRecord,
   query: string,
 ): string[] {
-  const tokens = queryTokens(query);
+  const tokens = tokenizeExplorerQuery(query);
 
   if (record.subject_type === "sage_result") {
     return tokens.filter((token) => token !== "sage");
@@ -710,7 +662,13 @@ function matchesQuery(record: NormalizedEvidenceRecord, query: string): boolean 
 
   if (!normalizedQuery) return true;
 
-  if (haystack.includes(normalizedQuery)) {
+  const phraseMatch = matchExplorerQueryText({
+    haystack,
+    query: normalizedQuery,
+    minimumRatio: 0.75,
+  });
+
+  if (phraseMatch.matched) {
     return true;
   }
 
@@ -729,7 +687,11 @@ function matchesQuery(record: NormalizedEvidenceRecord, query: string): boolean 
 
   const requiredTokens = strongTokens.length > 0 ? strongTokens : tokens;
 
-  return requiredTokens.every((token) => haystack.includes(token));
+  return matchExplorerQueryText({
+    haystack,
+    query: requiredTokens.join(" "),
+    minimumRatio: 0.67,
+  }).matched;
 }
 
 function matchesType(record: NormalizedEvidenceRecord, type: EvidenceKind | "all"): boolean {
@@ -746,6 +708,20 @@ function searchLocalDemoEvidence(input: {
     .filter((record) => matchesType(record, input.type))
     .filter((record) => matchesQuery(record, input.query))
     .slice(0, input.limit);
+}
+
+function searchCandidatesForQuery(input: {
+  query: string;
+  searchTerms: string;
+}): string[] {
+  return uniqueStrings([
+    input.searchTerms,
+    compileExplorerSearchText(input.query),
+    ...expandExplorerSearchTexts(input.query),
+  ])
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function uniqueEvidenceRecords(
@@ -777,7 +753,7 @@ function looksLikeHcsTransactionId(value: string): boolean {
 }
 
 function evidenceTypeFromQuery(query: string): EvidenceKind | null {
-  const tokens = new Set(queryTokens(query));
+  const tokens = new Set(tokenizeExplorerQuery(query));
 
   if (tokens.has("cipher")) return "cipher_result";
   if (tokens.has("sage")) return "sage_result";
@@ -843,19 +819,35 @@ async function searchLiveComputeResults(input: {
     }
   }
 
-  const list = await getExplorerJson(`/${input.program}/results`, {
-    q: input.searchTerms || null,
-    date: exactDateForRange(input.dateRange) ?? localProofDateForWindow(input.timeWindow),
-    datasetKey: input.datasetKey,
-    limit: exactDateForRange(input.dateRange) ? input.limit : Math.max(input.limit, 25),
+  const candidates = searchCandidatesForQuery({
+    query: input.query,
+    searchTerms: input.searchTerms,
   });
 
-  for (const item of pageItems(list)) {
-    const mapped = mapExplorerComputeResultToEvidence(input.program, item);
+  async function appendList(candidate: string | null): Promise<void> {
+    const list = await getExplorerJson(`/${input.program}/results`, {
+      q: candidate,
+      date: exactDateForRange(input.dateRange) ?? localProofDateForWindow(input.timeWindow),
+      datasetKey: input.datasetKey,
+      limit: exactDateForRange(input.dateRange) ? input.limit : Math.max(input.limit, 25),
+    });
 
-    if (mapped && matchesQuery(mapped, input.searchTerms)) {
-      records.push(mapped);
+    for (const item of pageItems(list)) {
+      const mapped = mapExplorerComputeResultToEvidence(input.program, item);
+
+      if (mapped && matchesQuery(mapped, input.searchTerms || input.query)) {
+        records.push(mapped);
+      }
     }
+  }
+
+  for (const candidate of candidates) {
+    await appendList(candidate);
+    if (uniqueEvidenceRecords(records).length >= input.limit) break;
+  }
+
+  if (records.length === 0 && input.searchTerms) {
+    await appendList(null);
   }
 
   return rankAndFilterEvidence({
@@ -938,23 +930,39 @@ async function searchLiveDatasets(input: {
 }): Promise<NormalizedEvidenceRecord[]> {
   const records: NormalizedEvidenceRecord[] = [];
 
-  const list = await getExplorerJson("/datasets", {
-    q: input.searchTerms || null,
-    visibility: "public",
-    limit: input.limit,
+  const candidates = searchCandidatesForQuery({
+    query: input.query,
+    searchTerms: input.searchTerms,
   });
 
-  for (const item of pageItems(list)) {
-    const mapped = mapExplorerDatasetToEvidence(item);
+  async function appendList(candidate: string | null): Promise<void> {
+    const list = await getExplorerJson("/datasets", {
+      q: candidate,
+      visibility: "public",
+      limit: Math.max(input.limit, 25),
+    });
 
-    if (mapped && matchesQuery(mapped, input.searchTerms)) {
-      records.push(await hydrateLiveDatasetEvidence(mapped));
+    for (const item of pageItems(list)) {
+      const mapped = mapExplorerDatasetToEvidence(item);
+
+      if (mapped && matchesQuery(mapped, input.searchTerms || input.query)) {
+        records.push(await hydrateLiveDatasetEvidence(mapped));
+      }
     }
+  }
+
+  for (const candidate of candidates) {
+    await appendList(candidate);
+    if (uniqueEvidenceRecords(records).length >= input.limit) break;
+  }
+
+  if (records.length === 0 && input.searchTerms) {
+    await appendList(null);
   }
 
   return rankAndFilterEvidence({
     records: uniqueEvidenceRecords(records),
-    query: input.searchTerms,
+    query: input.searchTerms || input.query,
     sort: input.sort === "highest_score" ? "relevance" : input.sort,
     dateRange: input.dateRange,
     anchoredOnly: input.anchoredOnly,
@@ -979,27 +987,45 @@ async function searchLiveHcsTransactions(input: {
   }
 
   const fetchLimit = input.dateRange ? Math.max(input.limit, 25) : input.limit;
-
-  const list = await getExplorerJson("/hcs/transactions", {
-    q: input.searchTerms || null,
-    limit: fetchLimit,
-    sort: input.sort === "latest" ? "latest" : null,
-    ...dateRangeParams(input.dateRange),
-  });
-
   const records: NormalizedEvidenceRecord[] = [];
 
-  for (const item of pageItems(list)) {
-    const mapped = mapExplorerHcsTransactionToEvidence(item);
+  const candidates = searchCandidatesForQuery({
+    query: input.query,
+    searchTerms: input.searchTerms,
+  });
 
-    if (mapped && matchesQuery(mapped, input.searchTerms)) {
-      records.push(mapped);
+  async function appendList(candidate: string | null): Promise<void> {
+    const list = await getExplorerJson("/hcs/transactions", {
+      q: candidate,
+      limit: fetchLimit,
+      sort: input.sort === "latest" ? "latest" : null,
+      ...dateRangeParams(input.dateRange),
+    });
+
+    for (const item of pageItems(list)) {
+      const mapped = mapExplorerHcsTransactionToEvidence(item);
+
+      if (mapped && matchesQuery(mapped, input.searchTerms || input.query)) {
+        records.push(mapped);
+      }
     }
+  }
+
+  for (const candidate of candidates) {
+    await appendList(candidate);
+
+    if (uniqueEvidenceRecords(records).length >= input.limit) {
+      break;
+    }
+  }
+
+  if (records.length === 0 && input.searchTerms) {
+    await appendList(null);
   }
 
   return rankAndFilterEvidence({
     records: uniqueEvidenceRecords(records),
-    query: input.searchTerms,
+    query: input.searchTerms || input.query,
     sort: input.sort,
     dateRange: input.dateRange,
     anchoredOnly: false,

@@ -10,6 +10,12 @@ import type {
   ExplorerAgentRetrievalQuality,
   ExplorerAgentRetrievalStepKind,
 } from "../explorer/explorerAgentTypes.js";
+import {
+  matchExplorerQueryText,
+  normalizeExplorerText,
+  textMatchesExplorerToken,
+  tokenizeExplorerQuery,
+} from "../explorer/explorerAgentQueryText.js";
 
 export type ExplorerAgentRankInputSource = "live" | "cache" | "local_demo";
 
@@ -31,72 +37,6 @@ const SOURCE_SCORE: Record<ExplorerAgentRankInputSource, number> = {
   cache: 10,
   local_demo: -40,
 };
-
-const ROUTING_TOKENS = new Set([
-  "a",
-  "about",
-  "all",
-  "an",
-  "and",
-  "any",
-  "are",
-  "best",
-  "bundle",
-  "can",
-  "card",
-  "cards",
-  "cipher",
-  "could",
-  "dataset",
-  "datasets",
-  "evidence",
-  "explain",
-  "export",
-  "find",
-  "for",
-  "from",
-  "give",
-  "hcs",
-  "hedera",
-  "help",
-  "in",
-  "is",
-  "latest",
-  "look",
-  "me",
-  "mirror",
-  "of",
-  "on",
-  "please",
-  "proof",
-  "proofcard",
-  "public",
-  "recent",
-  "record",
-  "records",
-  "result",
-  "results",
-  "run",
-  "runs",
-  "sage",
-  "score",
-  "scores",
-  "scoring",
-  "search",
-  "show",
-  "strong",
-  "strongest",
-  "the",
-  "this",
-  "to",
-  "top",
-  "transaction",
-  "transactions",
-  "verified",
-  "verify",
-  "what",
-  "with",
-]);
 
 function unique<T>(values: readonly T[]): T[] {
   const seen = new Set<T>();
@@ -144,7 +84,7 @@ function qualityConfidence(input: {
 }
 
 function searchableText(record: NormalizedEvidenceRecord): string {
-  return [
+  return normalizeExplorerText([
     record.subject_type,
     record.subject_id,
     record.title,
@@ -155,9 +95,7 @@ function searchableText(record: NormalizedEvidenceRecord): string {
     record.proof_card_url,
     record.hcs_transaction_id ?? "",
     record.hcs_topic_id ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
+  ].join(" "));
 }
 
 function queryTokens(input: {
@@ -165,15 +103,7 @@ function queryTokens(input: {
   compiled: ExplorerAgentCompiledQuery;
 }): string[] {
   const raw = input.compiled.searchText || input.normalized.question;
-
-  return unique(
-    raw
-      .toLowerCase()
-      .split(/[^a-z0-9_.:@/-]+/g)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2)
-      .filter((token) => !ROUTING_TOKENS.has(token)),
-  );
+  return tokenizeExplorerQuery(raw);
 }
 
 function isAnchored(record: NormalizedEvidenceRecord): boolean {
@@ -211,7 +141,10 @@ function exactSubjectMatch(input: {
 
   if (!subjectId) return false;
 
-  return input.record.subject_id.toLowerCase() === subjectId.toLowerCase();
+  return (
+    normalizeExplorerText(input.record.subject_id) ===
+    normalizeExplorerText(subjectId)
+  );
 }
 
 function exactHcsMatch(input: {
@@ -234,10 +167,10 @@ function datasetKeyMatch(input: {
 }): boolean {
   if (!input.datasetKey) return false;
 
-  const key = input.datasetKey.toLowerCase();
+  const key = normalizeExplorerText(input.datasetKey);
   const text = searchableText(input.record);
 
-  return input.record.subject_id.toLowerCase() === key || text.includes(key);
+  return normalizeExplorerText(input.record.subject_id) === key || text.includes(key);
 }
 
 function scoreRecord(input: {
@@ -255,8 +188,8 @@ function scoreRecord(input: {
     compiled: input.compiled,
   });
   const haystack = searchableText(record);
-  const title = record.title.toLowerCase();
-  const summary = record.summary.toLowerCase();
+  const title = normalizeExplorerText(record.title);
+  const summary = normalizeExplorerText(record.summary);
 
   let score = Math.max(0, 100 - input.entry.stepIndex * 10);
 
@@ -316,21 +249,21 @@ function scoreRecord(input: {
   }
 
   for (const token of tokens) {
-    if (!haystack.includes(token)) continue;
+    if (!textMatchesExplorerToken(haystack, token)) continue;
 
-    if (record.subject_id.toLowerCase().includes(token)) {
+    if (textMatchesExplorerToken(record.subject_id, token)) {
       score += 35;
       reasons.push(`subject id matched "${token}"`);
       continue;
     }
 
-    if (title.includes(token)) {
+    if (textMatchesExplorerToken(title, token)) {
       score += 25;
       reasons.push(`title matched "${token}"`);
       continue;
     }
 
-    if (summary.includes(token)) {
+    if (textMatchesExplorerToken(summary, token)) {
       score += 15;
       reasons.push(`summary matched "${token}"`);
       continue;
@@ -361,7 +294,14 @@ function scoreRecord(input: {
     reasons.push("record exposes proof-card/proof-review URL");
   }
 
-  if (tokens.length > 0 && !tokens.some((token) => haystack.includes(token))) {
+  if (
+    tokens.length > 0 &&
+    !matchExplorerQueryText({
+      haystack,
+      query: tokens.join(" "),
+      minimumRatio: 0.34,
+    }).matched
+  ) {
     score -= 30;
     penalties.push("record did not match compiled domain tokens directly");
   }
