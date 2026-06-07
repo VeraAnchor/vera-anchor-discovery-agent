@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import {
   ArrowRight,
   Bot,
@@ -47,7 +47,7 @@ function TrustTile({
   label,
   value,
 }: Readonly<{
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
 }>) {
