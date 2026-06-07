@@ -41,6 +41,8 @@ const CIPHER_ALIASES = [
   "cipher outputs",
   "cipher record",
   "cipher records",
+  "cipher job",
+  "cipher jobs",
   "cipher analysis",
   "cipher analyses",
 ];
@@ -54,6 +56,8 @@ const SAGE_ALIASES = [
   "sage outputs",
   "sage record",
   "sage records",
+  "sage job",
+  "sage jobs",
   "sage analysis",
   "sage analyses",
 ];
@@ -65,8 +69,29 @@ const COMPUTE_ALIASES = [
   "compute results",
   "compute output",
   "compute outputs",
+  "compute job",
+  "compute jobs",
+  "analysis job",
+  "analysis jobs",
   "analysis result",
   "analysis results",
+];
+
+const QUALITY_ALIASES = [
+  "good",
+  "good result",
+  "good results",
+  "good job",
+  "good jobs",
+  "high quality",
+  "high-quality",
+  "quality result",
+  "quality results",
+  "best quality",
+  "strong result",
+  "strong results",
+  "reliable result",
+  "reliable results",
 ];
 
 const DATASET_ALIASES = [
@@ -167,6 +192,8 @@ function hasEvidenceNoun(tokens: Set<string>): boolean {
     "dataset",
     "datasets",
     "evidence",
+    "job",
+    "jobs",
     "record",
     "records",
     "result",
@@ -483,8 +510,25 @@ function compileConstraints(
   }
 
   if (
-    hasToken(tokens, ["top", "best", "strongest", "score", "scores", "scoring", "ranked"]) ||
-    includesAny(text, ["highest scoring", "highest score", "top scoring"])
+    hasToken(tokens, [
+      "good",
+      "quality",
+      "reliable",
+      "top",
+      "best",
+      "strong",
+      "strongest",
+      "score",
+      "scores",
+      "scoring",
+      "ranked",
+    ]) ||
+    includesAny(text, [
+      "highest scoring",
+      "highest score",
+      "top scoring",
+      ...QUALITY_ALIASES,
+    ])
   ) {
     constraints.push(
       constraint({
@@ -615,12 +659,15 @@ const SEARCH_CONTROL_TOKENS = new Set([
   "from",
   "generate",
   "give",
+  "good",
   "hcs",
   "hedera",
   "help",
   "in",
   "inspect",
   "is",
+  "job",
+  "jobs",
   "latest",
   "look",
   "lookup",
@@ -635,7 +682,9 @@ const SEARCH_CONTROL_TOKENS = new Set([
   "proof",
   "proofcard",
   "public",
+  "quality",
   "receipt",
+  "reliable",
   "ranked",
   "recent",
   "record",

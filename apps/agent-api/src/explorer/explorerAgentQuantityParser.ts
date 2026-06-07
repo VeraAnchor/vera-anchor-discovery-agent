@@ -93,6 +93,12 @@ export function parseExplorerAgentQuantityConstraint(
 ): ParsedExplorerQuantityConstraint {
   const question = normalizeQuestion(questionRaw);
 
+  const cappedNumeric =
+    /\b(?:up\s+to|at\s+most|max(?:imum)?|no\s+more\s+than)\s+(\d{1,3})\b/i.exec(question);
+  if (cappedNumeric) {
+    return parsed(question, quantity(Number(cappedNumeric[1]), cappedNumeric[0]));
+  } 
+
   const numeric = /\b(?:top|first|latest|last|next|show|list|give(?:\s+me)?|find|get|return)\s+(\d{1,3})\b/i.exec(question);
   if (numeric) {
     return parsed(question, quantity(Number(numeric[1]), numeric[0]));
@@ -118,6 +124,14 @@ export function parseExplorerAgentQuantityConstraint(
   const few = /\b(?:a few|some|several)\b/i.exec(question);
   if (few) {
     return parsed(question, quantity(3, few[0], "medium"));
+  }
+
+  const casual = /\b(?:a\s+couple|a\s+handful|a\s+bunch)\b/i.exec(question);
+  if (casual) {
+    const source = casual[0].toLowerCase();
+    const limit = source.includes("couple") ? 2 : source.includes("handful") ? 5 : 8;
+
+    return parsed(question, quantity(limit, casual[0], "medium"));
   }
 
   const more = /\b(?:show\s+more|load\s+more|more)\b/i.exec(question);

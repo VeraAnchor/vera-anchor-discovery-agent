@@ -165,6 +165,12 @@ export function buildExplorerAgentRetrievalPlan(input: {
     reasons.push("retrieval plan will try dataset-key resolution before score search");
   }
 
+  if (wantsStrongest && !input.normalized.datasetKey && !searchText.trim()) {
+    reasons.push(
+      "retrieval plan will rank the requested primary evidence surface by strongest available evidence",
+    );
+  }
+
   if (wantsStrongest && input.normalized.datasetKey) {
     for (const type of computeSearchTypes(input.compiled)) {
       steps.push(

@@ -23,6 +23,7 @@ const BASE_STOP_WORDS = new Set([
   "again",
   "all",
   "also",
+  "another",
   "am",
   "an",
   "and",
@@ -31,6 +32,7 @@ const BASE_STOP_WORDS = new Set([
   "around",
   "as",
   "at",
+  "back",
   "be",
   "been",
   "being",
@@ -52,6 +54,7 @@ const BASE_STOP_WORDS = new Set([
   "give",
   "go",
   "had",
+  "handful",
   "has",
   "have",
   "having",
@@ -71,6 +74,7 @@ const BASE_STOP_WORDS = new Set([
   "like",
   "look",
   "lookup",
+  "looking",
   "me",
   "more",
   "need",
@@ -79,6 +83,7 @@ const BASE_STOP_WORDS = new Set([
   "of",
   "on",
   "or",
+  "other",
   "please",
   "show",
   "some",
@@ -120,37 +125,49 @@ const ROUTING_STOP_WORDS = new Set([
   "cards",
   "compute",
   "data",
+  "datum",
   "dataset",
   "datasets",
   "details",
   "download",
   "evidence",
   "export",
+  "fetch",
   "find",
+  "good",
   "hcs",
   "hedera",
   "info",
   "information",
+  "item",
+  "items",
+  "job",
+  "jobs",
   "latest",
   "mirror",
   "new",
   "newest",
   "only",
+  "output",
   "preview",
   "proof",
   "proofcard",
   "public",
+  "quality",
   "ranked",
   "recent",
   "record",
   "records",
   "related",
+  "reliable",
   "report",
   "result",
   "results",
   "review",
   "run",
   "runs",
+  "sample",
+  "samples",
   "search",
   "select",
   "strong",
@@ -164,6 +181,10 @@ const ROUTING_STOP_WORDS = new Set([
   "trustworthy",
   "tx",
   "txs",
+  "txn",
+  "txns",
+  "valid",
+  "validated",
   "verifiable",
   "verification",
   "verified",
@@ -172,6 +193,44 @@ const ROUTING_STOP_WORDS = new Set([
 
 const PRESERVE_IDENTIFIER_RE =
   /^(?:[a-z0-9][a-z0-9._:/-]{2,}|0\.0\.\d+|\d+\.\d+\.\d+@\d+\.\d+)$/i;
+
+const TOKEN_ALIASES: Record<string, string> = {
+  analyses: "analysis",
+  analyze: "analysis",
+  analysed: "analysis",
+  analyzing: "analysis",
+  anchors: "anchor",
+  anchored: "anchor",
+  anchoring: "anchor",
+  cards: "card",
+  ciphers: "cipher",
+  datasets: "dataset",
+  details: "detail",
+  downloads: "download",
+  evidence: "evidence",
+  exports: "export",
+  exported: "export",
+  exporting: "export",
+  hashes: "hash",
+  jobs: "job",
+  outputs: "output",
+  proofs: "proof",
+  records: "record",
+  results: "result",
+  runs: "run",
+  sages: "sage",
+  searches: "search",
+  searched: "search",
+  searching: "search",
+  transactions: "transaction",
+  txn: "tx",
+  txns: "tx",
+  txs: "tx",
+  validated: "verified",
+  validates: "verify",
+  validation: "verified",
+  verifier: "verify",
+}; 
 
 function unique(values: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -191,8 +250,12 @@ function unique(values: readonly string[]): string[] {
 export function normalizeExplorerText(value: unknown): string {
   return String(value ?? "")
     .normalize("NFKC")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
+    .replace(/[‐-‒–—―]/g, "-")
+    .replace(/[·•]/g, " ")
     .replace(/[_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -268,8 +331,10 @@ function canonicalToken(token: string): string {
 
   if (!cleaned) return "";
 
-  const singular = singularCandidate(cleaned);
-  return singular ?? cleaned;
+  const aliased = TOKEN_ALIASES[cleaned] ?? cleaned;
+
+  const singular = singularCandidate(aliased);
+  return singular ?? aliased;
 }
 
 export function explorerTokenVariants(tokenRaw: string): string[] {

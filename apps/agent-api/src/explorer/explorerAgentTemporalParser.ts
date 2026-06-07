@@ -39,6 +39,7 @@ const MONTHS: Record<string, number> = {
 
 const ISO_DATE_RE = /\b(20\d{2}|19\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/;
 const US_DATE_RE = /\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/((?:20|19)\d{2})\b/;
+const SHORT_MONTH_DAY_RE = /\b(0?[1-9]|1[0-2])-(0?[1-9]|[12]\d|3[01])\b/;
 const MONTH_DATE_RE =
   /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+([0-3]?\d)(?:st|nd|rd|th)?(?:,\s*((?:20|19)\d{2}))?\b/i;
 
@@ -62,6 +63,26 @@ function addUtcDays(value: Date, days: number): Date {
   const d = utcDateOnly(value);
   d.setUTCDate(d.getUTCDate() + days);
   return d;
+}
+
+function startOfUtcWeek(value: Date): Date {
+  const d = utcDateOnly(value);
+  const day = d.getUTCDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + mondayOffset);
+  return d;
+}
+
+function endOfUtcWeek(value: Date): Date {
+  return addUtcDays(startOfUtcWeek(value), 6);
+}
+
+function startOfUtcMonth(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+
+function endOfUtcMonth(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0));
 }
 
 function startOfToday(now: Date): Date {
@@ -100,6 +121,19 @@ function parseDateLiteral(raw: string, now: Date): string | null {
     return `${year}-${pad2(month)}-${pad2(day)}`;
   }
 
+  const shortMonthDay = value.match(SHORT_MONTH_DAY_RE);
+  if (shortMonthDay) {
+    const month = Number(shortMonthDay[1]);
+    const day = Number(shortMonthDay[2]);
+    const year = now.getUTCFullYear();
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+
+    return `${year}-${pad2(month)}-${pad2(day)}`;
+  }
+
   const named = value.match(MONTH_DATE_RE);
   if (named) {
     const month = MONTHS[named[1].toLowerCase().replace(".", "")];
@@ -118,6 +152,7 @@ function dateLiteralPattern(): string {
   return [
     String.raw`(?:20\d{2}|19\d{2})-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])`,
     String.raw`(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:(?:20|19)\d{2})`,
+    String.raw`(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01])`,
     String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+[0-3]?\d(?:st|nd|rd|th)?(?:,\s*(?:20|19)\d{2})?`,
   ].join("|");
 }
@@ -284,6 +319,61 @@ export function parseExplorerAgentTemporalRange(
         endDate: isoDate(now),
         label: `past ${unit}`,
         sourceText: namedRolling[0],
+      }),
+    );
+  }
+
+  const fuzzyRolling =
+    /\b(?:last|past|previous|recent)\s+(couple|few|several)\s+(day|days|week|weeks|month|months)\b/i.exec(question);
+
+  if (fuzzyRolling) {
+    const amount = fuzzyRolling[1].toLowerCase();
+    const unit = fuzzyRolling[2].toLowerCase();
+    const count = amount === "couple" ? 2 : amount === "few" ? 3 : 7;
+    const days =
+      unit.startsWith("day") ? count :
+      unit.startsWith("week") ? count * 7 :
+      count * 30;
+
+    return parsed(
+      question,
+      dateRange({
+        startDate: isoDate(addUtcDays(now, -Math.max(0, days - 1))),
+        endDate: isoDate(now),
+        label: `past ${amount} ${unit}`,
+        sourceText: fuzzyRolling[0],
+        confidence: "medium",
+      }),
+    );
+  }
+
+  const thisPeriod = /\bthis\s+(week|month)\b/i.exec(question);
+  if (thisPeriod) {
+    const unit = thisPeriod[1].toLowerCase();
+
+    return parsed(
+      question,
+      dateRange({
+        startDate: isoDate(unit === "week" ? startOfUtcWeek(now) : startOfUtcMonth(now)),
+        endDate: isoDate(unit === "week" ? endOfUtcWeek(now) : endOfUtcMonth(now)),
+        label: `this ${unit}`,
+        sourceText: thisPeriod[0],
+      }),
+    );
+  }
+
+  if (/\blast\s+night\b/i.test(lower)) {
+    const sourceText = question.match(/\blast\s+night\b/i)?.[0] ?? "last night";
+    const d = isoDate(addUtcDays(now, -1));
+
+    return parsed(
+      question,
+      dateRange({
+        startDate: d,
+        endDate: d,
+        label: "last night",
+        sourceText,
+        confidence: "medium",
       }),
     );
   }

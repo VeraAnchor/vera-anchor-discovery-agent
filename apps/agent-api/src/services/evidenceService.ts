@@ -350,8 +350,11 @@ const PROGRAM_QUERY_TOKENS = new Set(["sage", "cipher"]);
 const TYPE_QUERY_TOKENS = new Set([
   "anchor",
   "anchors",
+  "data",
   "dataset",
   "datasets",
+  "job",
+  "jobs",
   "result",
   "results",
   "hcs",
@@ -371,6 +374,7 @@ const MODIFIER_QUERY_TOKENS = new Set([
   "anchored",
   "anchors",
   "best",
+  "good",
   "highest",
   "latest",
   "live",
@@ -378,8 +382,10 @@ const MODIFIER_QUERY_TOKENS = new Set([
   "new",
   "newest",
   "only",
+  "quality",
   "recent",
   "reviewable",
+  "reliable",
   "score",
   "scores",
   "scoring",
@@ -590,8 +596,11 @@ const ROUTING_QUERY_TOKENS = new Set([
   "sage",
   "cipher",
   "compute",
+  "data",
   "dataset",
   "datasets",
+  "job",
+  "jobs",
   "result",
   "results",
   "hcs",
@@ -724,6 +733,22 @@ function searchCandidatesForQuery(input: {
     .slice(0, 4);
 }
 
+function shouldListWithoutSearchTerms(input: {
+  sort: EvidenceSort;
+  dateRange: ExplorerAgentTemporalRange | null;
+  datasetKey?: string | null;
+  anchoredOnly?: boolean;
+  verifiedOnly?: boolean;
+}): boolean {
+  return Boolean(
+    input.sort !== "relevance" ||
+      input.dateRange ||
+      input.datasetKey ||
+      input.anchoredOnly ||
+      input.verifiedOnly,
+  );
+}
+
 function uniqueEvidenceRecords(
   records: readonly NormalizedEvidenceRecord[],
 ): NormalizedEvidenceRecord[] {
@@ -758,7 +783,11 @@ function evidenceTypeFromQuery(query: string): EvidenceKind | null {
   if (tokens.has("cipher")) return "cipher_result";
   if (tokens.has("sage")) return "sage_result";
 
-  if (tokens.has("dataset") || tokens.has("datasets")) {
+  if (
+    tokens.has("data") ||
+    tokens.has("dataset") ||
+    tokens.has("datasets")
+  ) {
     return "dataset";
   }
 
@@ -846,13 +875,21 @@ async function searchLiveComputeResults(input: {
     if (uniqueEvidenceRecords(records).length >= input.limit) break;
   }
 
-  if (records.length === 0 && input.searchTerms) {
+  if (
+    records.length === 0 &&
+    (input.searchTerms ||
+      shouldListWithoutSearchTerms({
+        sort: input.sort,
+        dateRange: input.dateRange,
+        datasetKey: input.datasetKey,
+      }))
+  ) {
     await appendList(null);
   }
 
   return rankAndFilterEvidence({
     records: uniqueEvidenceRecords(records),
-    query: input.searchTerms,
+    query: input.searchTerms || input.query,
     sort: input.sort,
     dateRange: input.dateRange,
     anchoredOnly: false,
@@ -956,7 +993,16 @@ async function searchLiveDatasets(input: {
     if (uniqueEvidenceRecords(records).length >= input.limit) break;
   }
 
-  if (records.length === 0 && input.searchTerms) {
+  if (
+    records.length === 0 &&
+    (input.searchTerms ||
+      shouldListWithoutSearchTerms({
+        sort: input.sort,
+        dateRange: input.dateRange,
+        anchoredOnly: input.anchoredOnly,
+        verifiedOnly: input.verifiedOnly,
+      }))
+  ) {
     await appendList(null);
   }
 
@@ -1019,7 +1065,15 @@ async function searchLiveHcsTransactions(input: {
     }
   }
 
-  if (records.length === 0 && input.searchTerms) {
+  if (
+    records.length === 0 &&
+    (input.searchTerms ||
+      shouldListWithoutSearchTerms({
+        sort: input.sort,
+        dateRange: input.dateRange,
+        verifiedOnly: input.verifiedOnly,
+      }))
+  ) {
     await appendList(null);
   }
 
