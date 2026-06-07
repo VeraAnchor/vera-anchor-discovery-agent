@@ -293,10 +293,15 @@ function AnswerSummary({ answer }: Readonly<{ answer: string }>) {
     .map((part) => part.trim())
     .filter(Boolean);
 
-  const primary = paragraphs.slice(0, 4);
-  const diagnostics = paragraphs.slice(4).filter((part) =>
-    /trace|guardrail|retrieval|quality|compiled|plan/i.test(part),
-  );
+  const diagnosticPattern =
+    /trace|guardrail|retrieval|quality|compiled|plan|operational|caveat|tools used/i;
+
+  const primary = paragraphs
+    .filter((part) => !diagnosticPattern.test(part))
+    .filter((part) => !/^Strongest match:/i.test(part))
+    .slice(0, 3);
+
+  const diagnostics = paragraphs.filter((part) => diagnosticPattern.test(part));
 
   return (
     <div className="rounded-3xl border border-border/60 bg-background/25 p-4">
@@ -305,9 +310,11 @@ function AnswerSummary({ answer }: Readonly<{ answer: string }>) {
       </div>
 
       <div className="mt-3 space-y-3 text-sm leading-6 text-foreground/90">
-        {primary.map((paragraph) => (
-          <p key={paragraph}>{paragraph}</p>
-        ))}
+        {primary.length > 0 ? (
+          primary.map((paragraph) => <p key={paragraph}>{paragraph}</p>)
+        ) : (
+          <p>{answer}</p>
+        )}
       </div>
 
       {diagnostics.length > 0 ? (
@@ -627,6 +634,19 @@ export function AgentQueryPanel({
       setResult(completed);
       onResult?.(completed);
       setStatus("idle");
+      const firstEvidenceSubject = completed.evidence_items
+        .map(subjectFromEvidenceItem)
+        .find(Boolean);
+
+      const firstSourceSubject = completed.sources
+        .map(subjectFromAgentSource)
+        .find(Boolean);
+
+      const firstSubject = firstEvidenceSubject ?? firstSourceSubject;
+
+      if (nextMode === "search" && firstSubject) {
+        useSource(firstSubject);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AGENT_QUERY_FAILED");
       setStatus("failed");
@@ -1099,29 +1119,6 @@ export function AgentQueryPanel({
                   </div>
                 </div>
               ) : null}
-
-              <div className="rounded-2xl border border-border/60 bg-background/25 p-4">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Tools used
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {result.tools.length > 0 ? (
-                    result.tools.map((tool) => (
-                      <Badge
-                        key={`${tool.tool_name}:${tool.audit_id ?? "none"}`}
-                        variant={tool.status === "completed" ? "outline" : "warn"}
-                      >
-                        {tool.tool_name}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      No tool trace returned.
-                    </span>
-                  )}
-                </div>
-              </div>
             </div>
           ) : (
             <div className="flex min-h-[32rem] items-center justify-center rounded-3xl border border-border/60 bg-background/20 p-8 text-center">

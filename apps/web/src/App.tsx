@@ -91,6 +91,9 @@ function DemoStep({
 function App() {
   const [selectedSubject, setSelectedSubject] = useState(DEFAULT_SUBJECT);
   const [lastAgentResult, setLastAgentResult] = useState<ExplorerAgentQueryResult | null>(null);
+  function handleSelectSubject(subject: typeof DEFAULT_SUBJECT) {
+    setSelectedSubject(subject);
+  }
 
   const verifierHref = buildVeraSubjectHref({
     subjectType: selectedSubject.subjectType,
@@ -299,7 +302,7 @@ function App() {
       <section id="agent-query">
         <AgentQueryPanel
           selected={selectedSubject}
-          onSelectSubject={setSelectedSubject}
+          onSelectSubject={handleSelectSubject}
           onResult={setLastAgentResult}
         />
       </section>
