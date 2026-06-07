@@ -82,7 +82,15 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 8787
+      AGENT_API_PORT: 8787
       LOG_LEVEL: info
+
+      VERA_PUBLIC_SITE_URL: ${VERA_PUBLIC_SITE_URL:-https://veraanchor.com}
+      VERA_PUBLIC_API_BASE_URL: ${VERA_PUBLIC_API_BASE_URL:-http://explorer_api:8088/v1}
+      EXPLORER_LIVE_EVIDENCE_ENABLED: ${EXPLORER_LIVE_EVIDENCE_ENABLED:-true}
+      EXPLORER_API_TIMEOUT_MS: ${EXPLORER_API_TIMEOUT_MS:-4000}
+      EXPLORER_API_MAX_RESPONSE_BYTES: ${EXPLORER_API_MAX_RESPONSE_BYTES:-262144}
+      EXPLORER_API_USER_AGENT: ${EXPLORER_API_USER_AGENT:-vera-discovery-agent/1.0}
 
       AGENT_DB_SSL: "false"
       AGENT_DB_POOL_MAX: 8
@@ -100,32 +108,13 @@ services:
       - "5001:8787"
     networks:
       - agent_internal
-    init: true
-    stop_grace_period: 20s
-    depends_on:
-      agent_db:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://127.0.0.1:8787/healthz', r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 15s
-    logging:
-      driver: json-file
-      options:
-        max-size: "25m"
-        max-file: "4"
+      - internal
 
 networks:
   agent_internal:
     name: vera_agent_internal
+  internal:
+    external: true
 
 volumes:
   agent_db_data:

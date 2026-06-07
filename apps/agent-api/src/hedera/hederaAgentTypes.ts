@@ -109,3 +109,71 @@ export type HederaAgentStatus = Readonly<{
     decisions: HederaAgentPolicyDecision[];
   };
 }>;
+
+export type HederaAgentReadSource =
+  | "hedera_mirror_node"
+  | "hedera_agent_kit_adapter";
+
+export type HederaMirrorTransactionReadInput = Readonly<{
+  transactionId: string;
+}>;
+
+export type HederaHcsMessageReadInput = Readonly<{
+  topicId: string;
+  transactionId?: string | null;
+  consensusTimestamp?: string | null;
+}>;
+
+export type HederaMirrorTransactionReadResult = Readonly<{
+  ok: true;
+  network: HederaNetwork;
+  source: HederaAgentReadSource;
+  transaction_id: string;
+  normalized_transaction_id: string;
+  found: boolean;
+  consensus_timestamp: string | null;
+  name: string | null;
+  result: string | null;
+  charged_tx_fee: number | null;
+  entity_id: string | null;
+  node: string | null;
+  valid_start_timestamp: string | null;
+  raw: Record<string, unknown> | null;
+}>;
+
+export type HederaHcsMessageReadResult = Readonly<{
+  ok: true;
+  network: HederaNetwork;
+  source: HederaAgentReadSource;
+  topic_id: string;
+  transaction_id: string | null;
+  normalized_transaction_id: string | null;
+  consensus_timestamp: string | null;
+  found: boolean;
+  sequence_number: number | null;
+  running_hash: string | null;
+  running_hash_version: number | null;
+  payer_account_id: string | null;
+  message_base64: string | null;
+  raw: Record<string, unknown> | null;
+}>;
+
+export type HederaHcsReceiptVerificationResult = Readonly<{
+  ok: true;
+  network: HederaNetwork;
+  source: HederaAgentReadSource;
+  transaction_id: string;
+  normalized_transaction_id: string;
+  topic_id: string | null;
+  mirror_transaction_found: boolean;
+  hcs_message_found: boolean;
+  consensus_timestamp: string | null;
+  sequence_number: number | null;
+  running_hash: string | null;
+  payer_account_id: string | null;
+  transaction_result: string | null;
+  verified: boolean;
+  warnings: string[];
+  transaction: HederaMirrorTransactionReadResult;
+  message: HederaHcsMessageReadResult | null;
+}>;

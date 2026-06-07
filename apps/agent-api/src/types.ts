@@ -32,7 +32,7 @@ export type PaymentVerification = Readonly<{
   token: "HBAR";
   network: string;
   recipient_account_id: string;
-  verified_mode: "demo" | "hedera";
+  verified_mode: "demo" | "hedera" | "mirror";
 }>;
 
 export type AgentReceiptRecord = Readonly<{

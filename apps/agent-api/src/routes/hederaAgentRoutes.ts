@@ -1,10 +1,19 @@
 // apps/agent-api/src/routes/hederaAgentRoutes.ts
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getHederaAgentRuntimeStatus } from "../services/hederaAgentService.js";
+import {
+  getHederaAgentRuntimeStatus,
+  readHederaAgentHcsMessage,
+  readHederaAgentMirrorTransaction,
+  verifyHederaAgentHcsReceipt,
+} from "../services/hederaAgentService.js";
 import { buildAgentServiceContext } from "./routeContext.js";
 
 const STATUS_ROUTE = "/v1/hedera/agent/status";
+const MIRROR_TRANSACTION_READ_ROUTE =
+  "/v1/hedera/agent/mirror/transaction/read";
+const HCS_MESSAGE_READ_ROUTE = "/v1/hedera/agent/hcs/message/read";
+const HCS_RECEIPT_VERIFY_ROUTE = "/v1/hedera/agent/hcs/receipt/verify";
 
 function setNoStore(reply: FastifyReply): FastifyReply {
   return reply
@@ -171,6 +180,143 @@ export async function hederaAgentRoutes(app: FastifyInstance): Promise<void> {
       );
 
       return setNoStore(reply).send(status);
+    },
+  );
+  app.post(
+    MIRROR_TRANSACTION_READ_ROUTE,
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["transactionId"],
+          properties: {
+            transactionId: { type: "string", minLength: 1, maxLength: 256 },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const context = buildAgentServiceContext(req);
+      const body = req.body as { transactionId?: unknown };
+      const result = await readHederaAgentMirrorTransaction(body, context);
+
+      req.log.info(
+        {
+          reqId: req.id,
+          route: MIRROR_TRANSACTION_READ_ROUTE,
+          transactionId: result.transaction_id,
+          found: result.found,
+          network: result.network,
+        },
+        "hedera_agent_mirror_transaction_read",
+      );
+
+      return setNoStore(reply).send(result);
+    },
+  );
+
+  app.post(
+    HCS_MESSAGE_READ_ROUTE,
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["topicId"],
+          properties: {
+            topicId: { type: "string", minLength: 1, maxLength: 256 },
+            transactionId: {
+              anyOf: [{ type: "string", minLength: 1, maxLength: 256 }, { type: "null" }],
+            },
+            consensusTimestamp: {
+              anyOf: [{ type: "string", minLength: 1, maxLength: 256 }, { type: "null" }],
+            },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const context = buildAgentServiceContext(req);
+      const body = req.body as {
+        topicId?: unknown;
+        transactionId?: unknown;
+        consensusTimestamp?: unknown;
+      };
+      const result = await readHederaAgentHcsMessage(body, context);
+
+      req.log.info(
+        {
+          reqId: req.id,
+          route: HCS_MESSAGE_READ_ROUTE,
+          topicId: result.topic_id,
+          transactionId: result.transaction_id,
+          found: result.found,
+          network: result.network,
+        },
+        "hedera_agent_hcs_message_read",
+      );
+
+      return setNoStore(reply).send(result);
+    },
+  );
+
+  app.post(
+    HCS_RECEIPT_VERIFY_ROUTE,
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["transactionId"],
+          properties: {
+            transactionId: { type: "string", minLength: 1, maxLength: 256 },
+            topicId: {
+              anyOf: [{ type: "string", minLength: 1, maxLength: 256 }, { type: "null" }],
+            },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const context = buildAgentServiceContext(req);
+      const body = req.body as {
+        transactionId?: unknown;
+        topicId?: unknown;
+      };
+      const result = await verifyHederaAgentHcsReceipt(body, context);
+
+      req.log.info(
+        {
+          reqId: req.id,
+          route: HCS_RECEIPT_VERIFY_ROUTE,
+          transactionId: result.transaction_id,
+          topicId: result.topic_id,
+          verified: result.verified,
+          network: result.network,
+        },
+        "hedera_agent_hcs_receipt_verified",
+      );
+
+      return setNoStore(reply).send(result);
     },
   );
 }

@@ -15,6 +15,8 @@ import { quoteRoutes } from "./routes/quoteRoutes.js";
 import { actionRoutes } from "./routes/actionRoutes.js";
 import { proofRoutes } from "./routes/proofRoutes.js";
 import { hederaAgentRoutes } from "./routes/hederaAgentRoutes.js";
+import { explorerAgentRoutes } from "./routes/explorerAgentRoutes.js";
+import { paidAgentActionRoutes } from "./routes/paidAgentActionRoutes.js";
 import { bootstrapAgentDb } from "./db/dbBootstrap.js";
 import { closeAgentDb } from "./db/db.js";
 
@@ -187,6 +189,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(actionRoutes);
   await app.register(proofRoutes);
   await app.register(hederaAgentRoutes);
+  await app.register(explorerAgentRoutes);
+  await app.register(paidAgentActionRoutes);
 
   app.get("/", async (_req: FastifyRequest, reply: FastifyReply) => {
     return reply.send({

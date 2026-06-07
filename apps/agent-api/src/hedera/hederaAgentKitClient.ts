@@ -9,6 +9,7 @@ import type {
   HederaNetwork,
 } from "./hederaAgentTypes.js";
 import { evaluateHederaAgentPolicies } from "./hederaAgentKitPolicy.js";
+import { config as appConfig } from "../config.js";
 
 const ACCOUNT_ID_RE = /^0\.0\.\d+$/;
 

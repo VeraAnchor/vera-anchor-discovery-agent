@@ -9,6 +9,13 @@ const EvidenceSearchQuerySchema = z.object({
   q: z.string().max(256).optional(),
   limit: z.coerce.number().int().min(1).max(25).optional(),
   type: z.string().max(128).optional(),
+  sort: z.enum(["relevance", "latest", "highest_score"]).optional(),
+  timeWindow: z
+    .enum(["any", "today", "last_24h", "last_7d", "last_30d"])
+    .optional(),
+  datasetKey: z.string().min(1).max(512).optional(),
+  verifiedOnly: z.coerce.boolean().optional(),
+  anchoredOnly: z.coerce.boolean().optional(),
 });
 
 const EvidencePreviewParamsSchema = z.object({
@@ -27,6 +34,11 @@ export async function evidenceRoutes(app: FastifyInstance): Promise<void> {
           query: query.q,
           limit: query.limit,
           type: query.type,
+          sort: query.sort,
+          timeWindow: query.timeWindow,
+          datasetKey: query.datasetKey,
+          verifiedOnly: query.verifiedOnly,
+          anchoredOnly: query.anchoredOnly,
         },
         buildAgentServiceContext(req),
       );

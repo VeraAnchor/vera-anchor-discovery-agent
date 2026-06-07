@@ -12,6 +12,7 @@ import { agentDbPool } from "../db/db.js";
 import { createAgentRepos } from "../repos/agentRepos.js";
 import { withAgentTransaction } from "../repos/agentRepoUtils.js";
 import type { AgentActionRow } from "../repos/agentActionRepo.js";
+import type { AgentPaymentRow } from "../repos/agentPaymentRepo.js";
 import type { AgentReceiptRow } from "../repos/agentReceiptRepo.js";
 import type { PaymentVerification } from "../types.js";
 import type { AgentServiceContext } from "./agentServiceContext.js";
@@ -22,7 +23,7 @@ const repos = createAgentRepos(agentDbPool);
 
 const RECEIPT_TYPE = "proof_export" as const;
 const PAYMENT_TOKEN = "HBAR" as const;
-const VERIFIED_MODE_HEDERA = "hedera" as const;
+const VERIFIED_MODE_MIRROR = "mirror" as const;
 
 type ProofCoreAction = Readonly<{
   id: string;
@@ -357,16 +358,34 @@ function receiptPayload(input: {
   };
 }
 
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = payload[key];
+
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  return null;
+}
+
 function toCompletedResult(input: {
   action: AgentActionRow;
   receipt: AgentReceiptRow;
-  verifyUrl: string;
+  verifyUrl?: string | null;
 }): ExecuteProofBundleResult {
   const payload = input.receipt.payload ?? {};
   const proofCardHash =
     typeof payload.proof_card_hash === "string" && payload.proof_card_hash.trim()
       ? payload.proof_card_hash
       : null;
+  const verifyUrl = input.verifyUrl ?? payloadString(payload, "verify_url");
+
+  if (!verifyUrl) {
+    throwHttp("RECEIPT_VERIFY_URL_MISSING", 500);
+  }
 
   return Object.freeze({
     status: "completed",
@@ -377,7 +396,7 @@ function toCompletedResult(input: {
     proof_card_hash: proofCardHash,
     proof_bundle_url: `/proof-bundles/${input.receipt.id}`,
     proof_card_url: `/proof-cards/${input.receipt.id}`,
-    verify_url: input.verifyUrl,
+    verify_url: verifyUrl,
     receipt: input.receipt,
   });
 }
@@ -399,19 +418,10 @@ async function returnExistingCompletedResult(input: {
       return null;
     }
 
-    const { subjectType, subjectId } = getActionSubject(input.action);
-    const evidence = await getEvidencePreview(
-      {
-        subjectType,
-        subjectId,
-      },
-      input.context,
-    );
-
     return toCompletedResult({
       action: input.action,
       receipt,
-      verifyUrl: evidence.verify_url,
+      verifyUrl: null,
     });
   });
 }
@@ -422,6 +432,15 @@ async function loadActionForStateCheck(input: {
 }): Promise<AgentActionRow | null> {
   return withAgentTransaction(agentDbPool, input.context, async (client) => {
     return repos.actions.getById(input.actionId, { client });
+  });
+}
+
+async function loadAttachedPayment(input: {
+  paymentId: string;
+  context: Required<AgentServiceContext>;
+}): Promise<AgentPaymentRow | null> {
+  return withAgentTransaction(agentDbPool, input.context, async (client) => {
+    return repos.payments.getById(input.paymentId, { client });
   });
 }
 
@@ -472,9 +491,25 @@ export async function executeProofBundleExport(
     payment = verification.payment;
     paymentId = verification.payment_id;
   } else if (existingAction.status === "payment_verified" && existingAction.payment_id) {
+    const attachedPayment = await loadAttachedPayment({
+      paymentId: existingAction.payment_id,
+      context: scopedContext,
+    });
+
+    if (!attachedPayment) {
+      throwHttp("ATTACHED_PAYMENT_NOT_FOUND", 409);
+    }
+
+    if (
+      attachedPayment.provider_payment_id &&
+      attachedPayment.provider_payment_id !== paymentTransactionId
+    ) {
+      throwHttp("PAYMENT_TRANSACTION_MISMATCH", 409);
+    }
+
     payment = {
-      transaction_id: paymentTransactionId,
-      payer_account_id: payerAccountId,
+      transaction_id: attachedPayment.provider_payment_id ?? paymentTransactionId,
+      payer_account_id: attachedPayment.payer_ref ?? payerAccountId,
       amount: metadataString(existingAction.metadata, "quote_amount"),
       token: metadataHbarToken(existingAction.metadata, "quote_token"),
       network: metadataString(existingAction.metadata, "network", config.hederaNetwork),
@@ -483,7 +518,7 @@ export async function executeProofBundleExport(
         "recipient_account_id",
         config.treasuryAccountId,
       ),
-      verified_mode: VERIFIED_MODE_HEDERA,
+      verified_mode: VERIFIED_MODE_MIRROR,
     };
     paymentId = existingAction.payment_id;
   } else {
@@ -504,19 +539,10 @@ export async function executeProofBundleExport(
         });
 
         if (receipt) {
-          const { subjectType, subjectId } = getActionSubject(lockedAction);
-          const evidence = await getEvidencePreview(
-            {
-              subjectType,
-              subjectId,
-            },
-            scopedContext,
-          );
-
           return toCompletedResult({
             action: lockedAction,
             receipt,
-            verifyUrl: evidence.verify_url,
+            verifyUrl: null,
           });
         }
       }

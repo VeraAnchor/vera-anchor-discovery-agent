@@ -30,6 +30,13 @@ function parseCreateQuoteBody(value: unknown): z.infer<typeof CreateQuoteBodySch
   return parsed.data;
 }
 
+function setNoStore(reply: FastifyReply): FastifyReply {
+  return reply
+    .header("cache-control", "no-store, max-age=0")
+    .header("pragma", "no-cache")
+    .header("x-content-type-options", "nosniff");
+}
+
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     "/v1/quotes",
@@ -53,13 +60,12 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
         context,
       );
 
-      return reply
+      return setNoStore(reply)
         .code(201)
-        .header("cache-control", "no-store")
         .send({
           ...quote,
           payment_requirements: paymentRequirements,
-      });
+        });
     },
   );
 }

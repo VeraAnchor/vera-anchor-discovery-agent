@@ -15,12 +15,14 @@ import type { AgentPaymentRow } from "../repos/agentPaymentRepo.js";
 import type { PaymentVerification } from "../types.js";
 import type { AgentServiceContext } from "./agentServiceContext.js";
 import { assertActionPayable } from "./quoteService.js";
+import { readHederaMirrorTransaction } from "../hedera/hederaAgentKitReadAdapter.js";
 
 const repos = createAgentRepos(agentDbPool);
 
 const PAYMENT_PROVIDER = "hedera";
 const PAYMENT_TOKEN = "HBAR" as const;
 const VERIFIED_MODE_DEMO = "demo" as const;
+const VERIFIED_MODE_MIRROR = "mirror" as const;
 
 export type PaymentVerificationInput = Readonly<{
   actionId: string;
@@ -171,6 +173,10 @@ function amountMinorToHbar(amountMinorRaw: string | number | bigint | null): str
   return `${whole.toString()}.${frac.toString().padStart(8, "0").replace(/0+$/g, "")}`;
 }
 
+function amountMinorToBigInt(amountMinorRaw: string | number | bigint | null): bigint {
+  return BigInt(String(amountMinorRaw ?? "0"));
+}
+
 function quotePayloadString(
   quote: AgentQuoteRow,
   key: string,
@@ -197,8 +203,112 @@ function getQuoteRecipientAccountId(quote: AgentQuoteRow): string {
   return quotePayloadString(quote, "recipient_account_id", config.treasuryAccountId);
 }
 
+function getQuotePaymentMemo(action: AgentActionRow, quote: AgentQuoteRow): string {
+  return quotePayloadString(quote, "payment_memo", `vera-agent:${action.id}`);
+}
+
 function getQuoteNetwork(quote: AgentQuoteRow): string {
   return quote.network || config.hederaNetwork;
+}
+
+function getQuoteActionInputHash(quote: AgentQuoteRow): string | null {
+  return quotePayloadString(quote, "action_input_hash", "");
+}
+
+function getQuoteInputHash(quote: AgentQuoteRow): string | null {
+  return quotePayloadString(quote, "input_hash", "");
+}
+
+function getQuoteEvidenceSnapshotHash(quote: AgentQuoteRow): string | null {
+  return quotePayloadString(quote, "evidence_snapshot_hash", "");
+}
+
+function actionMetadataString(
+  action: AgentActionRow,
+  key: string,
+): string | null {
+  const value = action.metadata?.[key];
+
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function assertQuoteBoundToAction(input: {
+  action: AgentActionRow;
+  quote: AgentQuoteRow;
+}): void {
+  const quoteActionId = quotePayloadString(input.quote, "action_id", "");
+
+  if (quoteActionId && quoteActionId !== input.action.id) {
+    throwHttp("QUOTE_ACTION_ID_MISMATCH", 409);
+  }
+
+  const quoteActionType = quotePayloadString(input.quote, "action_type", "");
+
+  if (quoteActionType && quoteActionType !== input.action.action_type) {
+    throwHttp("QUOTE_ACTION_TYPE_MISMATCH", 409);
+  }
+
+  const quoteActionInputHash = getQuoteActionInputHash(input.quote);
+  const quoteInputHash = getQuoteInputHash(input.quote);
+
+  if (
+    quoteActionInputHash &&
+    input.action.input_hash &&
+    quoteActionInputHash !== input.action.input_hash
+  ) {
+    throwHttp("QUOTE_ACTION_INPUT_HASH_MISMATCH", 409);
+  }
+
+  if (
+    quoteInputHash &&
+    input.action.input_hash &&
+    quoteInputHash !== input.action.input_hash
+  ) {
+    throwHttp("QUOTE_INPUT_HASH_MISMATCH", 409);
+  }
+
+  const actionEvidenceSnapshotHash = actionMetadataString(
+    input.action,
+    "evidence_snapshot_hash",
+  );
+  const quoteEvidenceSnapshotHash = getQuoteEvidenceSnapshotHash(input.quote);
+
+  if (
+    actionEvidenceSnapshotHash &&
+    quoteEvidenceSnapshotHash &&
+    actionEvidenceSnapshotHash !== quoteEvidenceSnapshotHash
+  ) {
+    throwHttp("QUOTE_EVIDENCE_SNAPSHOT_HASH_MISMATCH", 409);
+  }
+
+  const actionNetwork = actionMetadataString(input.action, "network");
+
+  if (actionNetwork && actionNetwork !== getQuoteNetwork(input.quote)) {
+    throwHttp("QUOTE_NETWORK_MISMATCH", 409);
+  }
+
+  const actionRecipient = actionMetadataString(
+    input.action,
+    "recipient_account_id",
+  );
+
+  if (actionRecipient && actionRecipient !== getQuoteRecipientAccountId(input.quote)) {
+    throwHttp("QUOTE_RECIPIENT_MISMATCH", 409);
+  }
+
+  const actionAmount = actionMetadataString(input.action, "quote_amount");
+
+  if (actionAmount && actionAmount !== getQuoteAmount(input.quote)) {
+    throwHttp("QUOTE_AMOUNT_MISMATCH", 409);
+  }
 }
 
 function buildPaymentHash(input: {
@@ -207,6 +317,8 @@ function buildPaymentHash(input: {
   paymentTransactionId: string;
   payerAccountId: string | null;
   verifiedMode: string;
+  receivedAmountMinor?: string | null;
+  memo?: string | null;
 }): string {
   return sha3_512Json({
     action_id: input.action.id,
@@ -221,6 +333,8 @@ function buildPaymentHash(input: {
     network: getQuoteNetwork(input.quote),
     recipient_account_id: getQuoteRecipientAccountId(input.quote),
     verified_mode: input.verifiedMode,
+    received_amount_minor: input.receivedAmountMinor ?? null,
+    memo: input.memo ?? null,
   });
 }
 
@@ -252,6 +366,8 @@ async function loadPayableActionAndQuote(
     throwHttp(`QUOTE_NOT_ACTIVE:${quote.status}`, 409);
   }
 
+  assertQuoteBoundToAction({ action, quote });
+  
   if (Date.now() > new Date(quote.expires_at).getTime()) {
     await repos.quotes.markExpired(quote.id, { client });
     await repos.actions.markStatus(
@@ -298,7 +414,7 @@ async function createFailedPaymentAttempt(input: {
         : null,
       metadata: {
         error_code: input.code,
-        verified_mode: config.demoPaymentMode ? VERIFIED_MODE_DEMO : "real",
+        verified_mode: config.paymentVerificationMode,
       },
       actorRef: input.action.actor_ref,
       orgRef: input.action.org_ref,
@@ -307,6 +423,197 @@ async function createFailedPaymentAttempt(input: {
     },
     { client: input.client },
   );
+}
+
+function optionalString(value: unknown): string | null {
+  const s = cleanString(value);
+  return s || null;
+}
+
+function transactionPayerAccountId(transactionId: string): string {
+  const payer = transactionId.split("@")[0];
+
+  if (!/^0\.0\.\d+$/.test(payer)) {
+    throwHttp("INVALID_PAYMENT_TRANSACTION_PAYER", 400);
+  }
+
+  return payer;
+}
+
+function decodeMemoBase64(value: unknown): string | null {
+  const s = optionalString(value);
+
+  if (!s) return null;
+
+  try {
+    const decoded = Buffer.from(s, "base64").toString("utf8").trim();
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+function mirrorTransactionMemo(raw: Record<string, unknown> | null): string | null {
+  if (!raw) return null;
+
+  return optionalString(raw.memo) ?? decodeMemoBase64(raw.memo_base64);
+}
+
+function mirrorTransfers(raw: Record<string, unknown> | null): Record<string, unknown>[] {
+  const transfers = raw?.transfers;
+
+  if (!Array.isArray(transfers)) {
+    return [];
+  }
+
+  return transfers.filter(
+    (transfer): transfer is Record<string, unknown> =>
+      Boolean(transfer) &&
+      typeof transfer === "object" &&
+      !Array.isArray(transfer),
+  );
+}
+
+function transferAccountId(transfer: Record<string, unknown>): string | null {
+  return optionalString(transfer.account) ?? optionalString(transfer.account_id);
+}
+
+function transferAmountTinybars(transfer: Record<string, unknown>): bigint {
+  const raw = transfer.amount;
+
+  if (typeof raw === "bigint") return raw;
+
+  if (typeof raw === "number") {
+    if (!Number.isSafeInteger(raw)) {
+      throwHttp("INVALID_MIRROR_TRANSFER_AMOUNT", 502);
+    }
+
+    return BigInt(raw);
+  }
+
+  const s = cleanString(raw);
+
+  if (!/^-?\d+$/.test(s)) {
+    throwHttp("INVALID_MIRROR_TRANSFER_AMOUNT", 502);
+  }
+
+  return BigInt(s);
+}
+
+function receivedTinybarsByAccount(
+  raw: Record<string, unknown> | null,
+  accountId: string,
+): bigint {
+  let total = 0n;
+
+  for (const transfer of mirrorTransfers(raw)) {
+    if (transferAccountId(transfer) !== accountId) continue;
+
+    const amount = transferAmountTinybars(transfer);
+
+    if (amount > 0n) {
+      total += amount;
+    }
+  }
+
+  return total;
+}
+
+async function verifyMirrorHbarPayment(input: {
+  action: AgentActionRow;
+  quote: AgentQuoteRow;
+  paymentTransactionId: string;
+  payerAccountId: string | null;
+}): Promise<{
+  paymentHash: string;
+  payment: PaymentVerification;
+  metadata: Record<string, unknown>;
+}> {
+  const transaction = await readHederaMirrorTransaction({
+    transactionId: input.paymentTransactionId,
+  });
+
+  if (!transaction.found) {
+    throwHttp("PAYMENT_TRANSACTION_NOT_FOUND_ON_MIRROR", 404);
+  }
+
+  if (transaction.result !== "SUCCESS") {
+    throwHttp(`PAYMENT_TRANSACTION_NOT_SUCCESS:${transaction.result ?? "unknown"}`, 402);
+  }
+
+  const quoteNetwork = getQuoteNetwork(input.quote);
+
+  if (transaction.network !== quoteNetwork) {
+    throwHttp("PAYMENT_NETWORK_MISMATCH", 400);
+  }
+
+  const transactionPayer = transactionPayerAccountId(input.paymentTransactionId);
+
+  if (input.payerAccountId && input.payerAccountId !== transactionPayer) {
+    throwHttp("PAYMENT_PAYER_ACCOUNT_MISMATCH", 402);
+  }
+
+  const resolvedPayerAccountId = input.payerAccountId ?? transactionPayer;
+
+  const expectedRecipient = getQuoteRecipientAccountId(input.quote);
+  const expectedAmountMinor = amountMinorToBigInt(input.quote.amount_minor);
+  const receivedAmountMinor = receivedTinybarsByAccount(
+    transaction.raw,
+    expectedRecipient,
+  );
+
+  if (receivedAmountMinor !== expectedAmountMinor) {
+    throwHttp("PAYMENT_AMOUNT_MISMATCH", 402);
+  }
+
+  const expectedMemo = getQuotePaymentMemo(input.action, input.quote);
+  const actualMemo = mirrorTransactionMemo(transaction.raw);
+
+  if (actualMemo !== expectedMemo) {
+    throwHttp("PAYMENT_MEMO_MISMATCH", 402);
+  }
+
+  const paymentHash = buildPaymentHash({
+    action: input.action,
+    quote: input.quote,
+    paymentTransactionId: input.paymentTransactionId,
+    payerAccountId: resolvedPayerAccountId,
+    verifiedMode: VERIFIED_MODE_MIRROR,
+    receivedAmountMinor: receivedAmountMinor.toString(),
+    memo: actualMemo,
+  });
+
+  const metadata = {
+    verified_mode: VERIFIED_MODE_MIRROR,
+    verified_by: "hedera-mirror-node",
+    quote_hash: input.quote.quote_hash,
+    action_input_hash: input.action.input_hash,
+    mirror_transaction_id: transaction.transaction_id,
+    mirror_normalized_transaction_id: transaction.normalized_transaction_id,
+    mirror_consensus_timestamp: transaction.consensus_timestamp,
+    mirror_transaction_result: transaction.result,
+    mirror_transaction_name: transaction.name,
+    resolved_payer_account_id: resolvedPayerAccountId,
+    expected_recipient_account_id: expectedRecipient,
+    expected_amount_minor: expectedAmountMinor.toString(),
+    received_amount_minor: receivedAmountMinor.toString(),
+    expected_memo: expectedMemo,
+    actual_memo: actualMemo,
+  };
+
+  return {
+    paymentHash,
+    metadata,
+    payment: {
+      transaction_id: input.paymentTransactionId,
+      payer_account_id: resolvedPayerAccountId,
+      amount: getQuoteAmount(input.quote),
+      token: PAYMENT_TOKEN,
+      network: quoteNetwork,
+      recipient_account_id: expectedRecipient,
+      verified_mode: VERIFIED_MODE_MIRROR,
+    },
+  };
 }
 
 export async function verifyPaymentForAction(
@@ -319,6 +626,7 @@ export async function verifyPaymentForAction(
       input.paymentTransactionId,
     );
     const payerAccountId = normalizePayerAccountId(input.payerAccountId);
+    const verificationMode = config.paymentVerificationMode;
 
     return await withAgentTransaction(agentDbPool, context, async (client) => {
       const { action, quote } = await loadPayableActionAndQuote(actionId, client);
@@ -326,7 +634,7 @@ export async function verifyPaymentForAction(
       /*
        * Advisory precheck only.
        *
-       * This can miss rows hidden by RLS from another actor, so the real replay
+       * This can miss rows hidden by RLS from another actor, so the authoritative replay
        * protection is the DB unique index on (provider, provider_payment_id).
        */
       const existing = await repos.payments.getByProviderPaymentId(
@@ -345,7 +653,7 @@ export async function verifyPaymentForAction(
         } as const;
       }
 
-      if (config.demoPaymentMode) {
+      if (verificationMode === VERIFIED_MODE_DEMO) {
         if (!looksLikeHederaTransactionId(paymentTransactionId)) {
           await createFailedPaymentAttempt({
             action,
@@ -369,6 +677,8 @@ export async function verifyPaymentForAction(
           paymentTransactionId,
           payerAccountId,
           verifiedMode: VERIFIED_MODE_DEMO,
+          receivedAmountMinor: String(quote.amount_minor),
+          memo: getQuotePaymentMemo(action, quote),
         });
 
         const submittedPayment = await repos.payments.createPayment(
@@ -447,31 +757,82 @@ export async function verifyPaymentForAction(
         } as const;
       }
 
-      /*
-       * Real verification placeholder.
-       *
-       * This should later verify against Hedera Mirror / Agent Kit / x402 facilitator:
-       * - transaction exists and is final
-       * - network matches quote
-       * - recipient matches quote recipient_account_id
-       * - amount >= quote amount
-       * - token/currency matches quote currency
-       * - memo or facilitator metadata binds to action.id / action.input_hash
-       * - transaction has not been reused
-       */
-      await createFailedPaymentAttempt({
+      if (verificationMode === "disabled") {
+        return {
+          ok: false,
+          code: "PAYMENT_VERIFICATION_DISABLED",
+          status: 403,
+        } as const;
+      }
+
+      const mirror = await verifyMirrorHbarPayment({
         action,
         quote,
         paymentTransactionId,
         payerAccountId,
-        code: "REAL_PAYMENT_VERIFICATION_NOT_IMPLEMENTED",
-        client,
       });
 
+      const submittedPayment = await repos.payments.createPayment(
+        {
+          actionId: action.id,
+          quoteId: quote.id,
+          provider: PAYMENT_PROVIDER,
+          providerPaymentId: paymentTransactionId,
+          status: "submitted",
+          amountMinor: Number(quote.amount_minor),
+          currency: quote.currency,
+          network: getQuoteNetwork(quote),
+          payerRef: mirror.payment.payer_account_id,
+          payeeRef: getQuoteRecipientAccountId(quote),
+          transactionReference: paymentTransactionId,
+          verificationReference: paymentTransactionId,
+          paymentHash: mirror.paymentHash,
+          metadata: mirror.metadata,
+          actorRef: action.actor_ref,
+          orgRef: action.org_ref,
+          requestId: action.request_id,
+          idempotencyKey: null,
+        },
+        { client },
+      );
+
+      const verifiedPayment = await repos.payments.markVerified(
+        {
+          id: submittedPayment.id,
+          verificationReference: paymentTransactionId,
+          paymentHash: mirror.paymentHash,
+          metadata: {
+            ...mirror.metadata,
+            verified_at_source: "hedera_mirror_node",
+          },
+        },
+        { client },
+      );
+
+      const payment = verifiedPayment ?? submittedPayment;
+
+      await repos.quotes.markAccepted(quote.id, { client });
+
+      await repos.actions.attachPayment(
+        {
+          actionId: action.id,
+          paymentId: payment.id,
+        },
+        { client },
+      );
+
+      await repos.actions.markStatus(
+        {
+          id: action.id,
+          status: "payment_verified",
+        },
+        { client },
+      );
+
       return {
-        ok: false,
-        code: "REAL_PAYMENT_VERIFICATION_NOT_IMPLEMENTED",
-        status: 501,
+        ok: true,
+        payment_id: payment.id,
+        payment: mirror.payment,
       } as const;
     });
   } catch (err) {

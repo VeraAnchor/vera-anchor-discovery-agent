@@ -82,6 +82,25 @@ export class AgentPaymentRepo extends AgentRepoBase {
     });
   }
 
+  async getById(
+    idRaw: string,
+    { client }: { client: pg.PoolClient },
+  ): Promise<AgentPaymentRow | null> {
+    const id = normalizeUuid(idRaw, "id");
+
+    const sql = `
+      SELECT *
+      FROM agent.payment_transactions
+      WHERE id = $1::uuid
+        AND deleted_at IS NULL
+      LIMIT 1;
+    `;
+
+    const { rows } = await this.query<AgentPaymentRow>(client, sql, [id]);
+
+    return rows[0] ?? null;
+  }
+
   async createPayment(
     input: {
       id?: string | null;
