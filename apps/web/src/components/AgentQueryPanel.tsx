@@ -82,18 +82,6 @@ const EXAMPLES: readonly ExampleQuery[] = [
     anchoredOnly: true,
   },
   {
-    label: "Mirror verified CIPHER",
-    question: "Find mirror verified CIPHER results",
-    mode: "search",
-    verifiedOnly: true,
-  },
-  {
-    label: "Top scored CIPHER",
-    question: "Find highest scoring CIPHER results",
-    mode: "search",
-    sort: "highest_score",
-  },
-  {
     label: "Search glioblastoma evidence",
     question: "Find evidence for glioblastoma",
     mode: "search",
