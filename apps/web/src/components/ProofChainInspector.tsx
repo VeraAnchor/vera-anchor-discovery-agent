@@ -135,8 +135,10 @@ export function ProofChainInspector({ selected, result }: Props) {
               <Badge variant={verification.verified ? "success" : "warn"}>
                 {verification.verified ? "HCS verified" : "HCS not verified"}
               </Badge>
+               ) : hasLoadedSelectedEvidence ? (
+              <Badge variant="info">Evidence loaded</Badge>
             ) : (
-              <Badge variant="muted">No verification yet</Badge>
+              <Badge variant="muted">Awaiting evidence</Badge>
             )}
 
             {verification?.transaction_result ? (
@@ -319,12 +321,13 @@ export function ProofChainInspector({ selected, result }: Props) {
           ) : (
             <div className="mt-4 rounded-2xl border border-border/60 bg-background/25 p-5">
               <div className="text-sm font-semibold text-foreground">
-                No structured HCS verification loaded yet.
+                Awaiting structured Mirror verification.
               </div>
               <div className="mt-2 text-sm leading-6 text-muted-foreground">
-                Run “Explain selected” for an evidence record with an HCS
-                transaction, or use “Verify HCS” with a transaction ID. The
-                inspector will populate from the agent response.
+                The selected evidence contains HCS receipt metadata when a
+                transaction and topic are shown on the left. Run “Verify selected
+                HCS receipt” or use “Verify HCS” with a transaction ID to load the
+                structured Mirror response.
               </div>
             </div>
           )}

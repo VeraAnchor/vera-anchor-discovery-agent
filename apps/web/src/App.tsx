@@ -282,6 +282,43 @@ function App() {
         </GlassCard>
 
         <GlassCard tone="subtle" className="p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Judge demo checklist
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {[
+              "Run the demo path or search glioblastoma evidence.",
+              "Select a returned evidence card.",
+              "Verify the selected HCS receipt.",
+              "Create a payment quote.",
+              "Pay the exact HBAR requirement with HashPack.",
+              "Submit the transaction ID to generate the proof bundle.",
+            ].map((item, index) => (
+              <div
+                key={item}
+                className="rounded-2xl border border-border/60 bg-background/25 p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-cyan-400/35 bg-cyan-500/10 text-[11px] font-black text-cyan-100">
+                    {index + 1}
+                  </div>
+                  <div className="text-sm leading-6 text-muted-foreground">
+                    {item}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 text-sm leading-6 text-muted-foreground">
+            HCS anchors the selected evidence receipt. Mirror Node confirms the
+            transaction metadata. HashPack signs payment externally. The backend
+            exports only after the exact payment quote is verified.
+          </div>
+        </GlassCard>
+
+        <GlassCard tone="subtle" className="p-5">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-200" />

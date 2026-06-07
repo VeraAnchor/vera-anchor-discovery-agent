@@ -474,7 +474,7 @@ export function AgentQueryPanel({
           Boolean(entry.subject),
       );
   }, [result?.evidence_items]);
-  
+
   const selectableSources = useMemo(() => {
     return (result?.sources ?? [])
       .map((source) => ({
@@ -501,15 +501,30 @@ export function AgentQueryPanel({
     );
 
     return new Set([...evidenceKeys, ...sourceKeys]).has(selectedKey);
-    }, [
-      result,
-      selectableEvidenceItems,
-      selectableSources,
-      selected.subjectId,
-      selected.subjectType,
-    ]);
+  }, [
+    result,
+    selectableEvidenceItems,
+    selectableSources,
+    selected.subjectId,
+    selected.subjectType,
+  ]);
 
-    const reviewWarnings = useMemo(() => {
+  const selectedEvidenceForCurrentSelection = useMemo(() => {
+    const selectedKey = `${selected.subjectType}:${selected.subjectId}`;
+
+    return (
+      selectableEvidenceItems.find(
+        ({ subject }) =>
+          `${subject.subjectType}:${subject.subjectId}` === selectedKey,
+      )?.item ?? null
+    );
+  }, [
+    selectableEvidenceItems,
+    selected.subjectId,
+    selected.subjectType,
+  ]);
+
+  const reviewWarnings = useMemo(() => {
     return visibleWarnings(result?.warnings ?? []);
   }, [result?.warnings]);
 
@@ -603,6 +618,13 @@ export function AgentQueryPanel({
       verifiedOnly,
       anchoredOnly,
     },
+    hcsInput: {
+      hcsTransactionId: string;
+      hcsTopicId: string;
+    } = {
+      hcsTransactionId,
+      hcsTopicId,
+    },
   ) {
     const q = nextQuestion.trim();
 
@@ -621,8 +643,8 @@ export function AgentQueryPanel({
           mode: nextMode,
           subjectType: nextSubjectType,
           subjectId: nextSubjectId,
-          hcsTransactionId,
-          hcsTopicId,
+          hcsTransactionId: hcsInput.hcsTransactionId,
+          hcsTopicId: hcsInput.hcsTopicId,
           sort: modifiers.sort,
           timeWindow: modifiers.timeWindow,
           datasetKey: modifiers.datasetKey,
@@ -640,14 +662,64 @@ export function AgentQueryPanel({
     }
   }
 
-  function useSource(subject: SelectedSubject) {
+  function useSource(
+    subject: SelectedSubject,
+    item?: ExplorerAgentEvidenceItem,
+  ) {
     onSelectSubject(subject);
     setSubjectType(subject.subjectType);
     setSubjectId(subject.subjectId);
 
+    if (item?.hcs_transaction_id) {
+      setHcsTransactionId(item.hcs_transaction_id);
+      setHcsTopicId(item.hcs_topic_id ?? "");
+      return;
+    }
+
     if (subject.subjectType === "hcs_transaction") {
       setHcsTransactionId(subject.subjectId);
     }
+  }
+
+  function verifySelectedHcsReceipt() {
+    const selectedHcsTransactionId =
+      selectedEvidenceForCurrentSelection?.hcs_transaction_id ??
+      (selected.subjectType === "hcs_transaction" ? selected.subjectId : "");
+
+    const selectedHcsTopicId =
+      selectedEvidenceForCurrentSelection?.hcs_topic_id ?? "";
+
+    const tx = selectedHcsTransactionId.trim();
+
+    if (!tx) {
+      setError("Selected evidence does not include an HCS transaction ID.");
+      return;
+    }
+
+    const q = "Verify the selected HCS receipt";
+
+    setMode("verify_hcs");
+    setQuestion(q);
+    setHcsTransactionId(tx);
+    setHcsTopicId(selectedHcsTopicId);
+
+    void runQuery(
+      q,
+      "verify_hcs",
+      selected.subjectType,
+      selected.subjectId,
+      {
+        sort,
+        timeWindow,
+        datasetKey,
+        verifiedOnly,
+        anchoredOnly,
+      },
+      {
+        hcsTransactionId: tx,
+        hcsTopicId: selectedHcsTopicId,
+      },
+    );
   }
 
   function applyExample(example: ExampleQuery) {
@@ -865,6 +937,40 @@ export function AgentQueryPanel({
               </div>
             ) : null}
 
+            {selectedCurrentEvidence ? (
+              <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.06] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">
+                      Selected evidence loaded
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Verify the selected record’s HCS receipt before generating
+                      a paid proof export.
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="brandOutline"
+                    size="sm"
+                    disabled={
+                      status === "querying" ||
+                      !(
+                        selectedEvidenceForCurrentSelection?.hcs_transaction_id ||
+                        selected.subjectType === "hcs_transaction"
+                      )
+                    }
+                    onClick={verifySelectedHcsReceipt}
+                    className="shrink-0 justify-center"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Verify selected HCS receipt
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <Button
               type="button"
               variant="brand"
@@ -1028,7 +1134,7 @@ export function AgentQueryPanel({
                           key={`${subject.subjectType}:${subject.subjectId}`}
                           item={item}
                           selected={selectedNow}
-                          onSelect={() => useSource(subject)}
+                          onSelect={() => useSource(subject, item)}
                         />
                       );
                     })}
