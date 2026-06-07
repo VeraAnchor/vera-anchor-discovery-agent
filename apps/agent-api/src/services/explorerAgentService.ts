@@ -639,10 +639,7 @@ function queryModifierWarnings(
 
   if (input.sort === "highest_score" && !input.datasetKey) {
     warnings.push(
-      [
-        "Highest-score search requires a dataset key for the Explorer run-score endpoint.",
-        "I used the normal evidence search path and deterministic local ranking instead.",
-      ].join(" "),
+      "Highest-score search works best with a dataset key. Results were ranked deterministically from available public evidence.",
     );
   }
 
@@ -653,38 +650,7 @@ function queryModifierWarnings(
     input.subjectType !== "sage_result"
   ) {
     warnings.push(
-      [
-        "Highest-score search is currently supported for SAGE and CIPHER compute results.",
-        "For this search scope, I used deterministic local ranking instead.",
-      ].join(" "),
-    );
-  }
-
-  if (
-    input.timeWindow === "last_24h" ||
-    input.timeWindow === "last_7d" ||
-    input.timeWindow === "last_30d"
-  ) {
-    warnings.push(
-      [
-       `The ${input.timeWindow} window is normalized by the agent, but the current public Explorer evidence search path only maps an exact day filter directly.`,
-        "I used live search plus deterministic local ranking/filtering where possible.",
-      ].join(" "),
-    );
-  }
-
-  if (input.verifiedOnly) {
-    warnings.push(
-      [
-        "Verified-only filtering is based on public normalized evidence indicators such as mirror-verified status.",
-        "It does not decrypt private payloads or perform private artifact inspection.",
-      ].join(" "),
-    );
-  }
-
-  if (input.anchoredOnly) {
-    warnings.push(
-      "Anchored-only filtering keeps evidence records that expose a public HCS transaction ID or HCS topic ID.",
+      "Highest-score search is currently supported for SAGE and CIPHER compute results. This scope used deterministic local ranking.",
     );
   }
 
@@ -894,13 +860,14 @@ function searchSuccessAnswer(input: {
   topMatchReasons: string | null;
   nextBestAction: string;
 }): string {
+  const recordLabel = input.count === 1 ? "record" : "records";
+
   return [
-    `Found ${input.count} evidence record(s) across ${input.scope}.`,
-    input.compiledSearchText
-      ? `Compiled search text: "${input.compiledSearchText}".`
-      : null,
+    `Found ${input.count} ${recordLabel}.`,
+    `Best match: ${input.strongestTitle}.`,
+    input.strongestSummary,
     input.resolvedDatasetKey
-      ? `Resolved dataset key: ${input.resolvedDatasetKey}.`
+      ? `Dataset: ${input.resolvedDatasetKey}.`
       : null,
     input.modifierSummary ? `Applied query modifiers: ${input.modifierSummary}.` : null,
     `Strongest match: ${input.strongestTitle}.`,

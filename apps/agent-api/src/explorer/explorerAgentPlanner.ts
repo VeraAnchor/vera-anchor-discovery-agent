@@ -865,33 +865,14 @@ function compiledWarnings(input: {
   constraints: readonly ExplorerAgentQueryConstraint[];
 }): string[] {
   const warnings: string[] = [];
-    
-  if (
-    !input.searchText &&
-    !input.normalized.subjectId &&
-    !input.normalized.hcsTransactionId &&
-    !hasConstraint(input.constraints, "date_range") &&
-    !hasConstraint(input.constraints, "recent") &&
-    !hasConstraint(input.constraints, "quantity") &&
-    input.evidenceTypes.length === 0
-  ) {
-    warnings.push(
-      "The query compiler did not find strong domain search terms, so the agent used the safest broad evidence route.",
-    );
-  }
-
+      
   if (
     hasConstraint(input.constraints, "strongest") &&
-    !constraintString(input.constraints, "dataset_scoped")
+    !constraintString(input.constraints, "dataset_scoped") &&
+    input.normalized.sort === "highest_score"
   ) {
     warnings.push(
-      "Strongest-result queries are most precise when a dataset key is available. The agent will use deterministic evidence ranking unless a dataset key can be resolved.",
-    );
-  }
-
-  if (input.evidenceTypes.length > 1 && input.evidenceTypes[0]?.score < 60) {
-    warnings.push(
-      "No single evidence surface was strongly identified, so the agent searched multiple public Vera evidence surfaces.",
+      "Highest-score searches are most precise when a dataset key is available.",
     );
   }
 

@@ -142,6 +142,58 @@ function shortMiddle(value: unknown, head = 18, tail = 12): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
+function visibleWarnings(warnings: readonly string[]): string[] {
+  const hiddenFragments = [
+    "No single evidence surface was strongly identified",
+    "Local demo fallback evidence was returned",
+    "query compiler did not find strong domain search terms",
+    "used the safest broad evidence route",
+    "Verified-only filtering is based on",
+    "Anchored-only filtering keeps",
+  ];
+
+  return Array.from(new Set(warnings)).filter((warning) => {
+    return !hiddenFragments.some((fragment) => warning.includes(fragment));
+  });
+}
+
+function AnswerSummary({ answer }: Readonly<{ answer: string }>) {
+  const paragraphs = answer
+    .split(/\n{2,}/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const primary = paragraphs.slice(0, 4);
+  const diagnostics = paragraphs.slice(4).filter((part) =>
+    /trace|guardrail|retrieval|quality|compiled|plan/i.test(part),
+  );
+
+  return (
+    <div className="rounded-3xl border border-border/60 bg-background/25 p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Agent answer
+      </div>
+
+      <div className="mt-3 space-y-3 text-sm leading-6 text-foreground/90">
+        {primary.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+      </div>
+
+      {diagnostics.length > 0 ? (
+        <details className="mt-4 rounded-2xl border border-border/60 bg-background/25 p-3">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Technical details
+          </summary>
+          <div className="mt-3 whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">
+            {diagnostics.join("\n\n")}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function evidenceHref(item: ExplorerAgentEvidenceItem): string | null {
   return buildVeraEvidenceHref(item);
 }
@@ -782,14 +834,21 @@ export function AgentQueryPanel({
                 <Badge variant="outline">{result.tools.length} tools</Badge>
               </div>
 
-              <div className="rounded-3xl border border-border/60 bg-background/25 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Agent answer
-                </div>
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-foreground/90">
-                  {result.answer}
-                </div>
-              </div>
+              <AnswerSummary answer={result.answer} />
+
+              {visibleWarnings(result.warnings).length > 0 ? (
+                <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+                    <AlertTriangle className="h-4 w-4" />
+                      Review notes
+                    </div>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
+                      {visibleWarnings(result.warnings).map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
               {selectableEvidenceItems.length > 0 ? (
                 <div>
