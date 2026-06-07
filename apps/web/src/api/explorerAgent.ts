@@ -99,6 +99,22 @@ export type ExplorerAgentQueryInput = Readonly<{
   anchoredOnly?: boolean | null;
 }>;
 
+const DEFAULT_AGENT_API_BASE_URL = import.meta.env.DEV
+  ? "https://agentapi.veraanchor.com"
+  : "http://localhost:5001";
+
+export const AGENT_API_BASE_URL = String(
+  import.meta.env.VITE_AGENT_API_BASE_URL ?? DEFAULT_AGENT_API_BASE_URL,
+).replace(/\/+$/g, "");
+
+function agentApiUrl(path: string): string {
+  if (!path.startsWith("/")) {
+    throw new Error("AGENT_API_PATH_MUST_BE_ABSOLUTE");
+  }
+
+  return `${AGENT_API_BASE_URL}${path}`;
+}
+
 async function readJsonOrThrow<T>(response: Response): Promise<T> {
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
@@ -118,7 +134,7 @@ async function readJsonOrThrow<T>(response: Response): Promise<T> {
 export async function queryExplorerAgent(
   input: ExplorerAgentQueryInput,
 ): Promise<ExplorerAgentQueryResult> {
-  const response = await fetch("/v1/explorer/agent/query", {
+  const response = await fetch(agentApiUrl("/v1/explorer/agent/query"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
