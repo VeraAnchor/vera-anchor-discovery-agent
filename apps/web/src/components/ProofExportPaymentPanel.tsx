@@ -151,6 +151,41 @@ function receiptIdFromResult(result: ExecutePaidActionResult): string | null {
   return id.trim() || null;
 }
 
+function PaymentStepRail({ status }: Readonly<{ status: Status }>) {
+  const quoteDone =
+    status === "quoted" ||
+    status === "paying" ||
+    status === "executing" ||
+    status === "completed";
+  const paymentDone = status === "executing" || status === "completed";
+  const exportDone = status === "completed";
+
+  const steps = [
+    { label: "Quote", done: quoteDone },
+    { label: "Pay", done: paymentDone },
+    { label: "Verify", done: exportDone },
+    { label: "Export", done: exportDone },
+  ];
+
+  return (
+    <div className="mt-5 grid gap-2 sm:grid-cols-4">
+      {steps.map((step, index) => (
+        <div
+          key={step.label}
+          className={[
+            "rounded-xl border px-3 py-2 text-center text-xs font-semibold",
+            step.done
+              ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
+              : "border-border/60 bg-background/25 text-muted-foreground",
+          ].join(" ")}
+        >
+          {index + 1}. {step.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ProofExportPaymentPanel({
   subjectType,
   subjectId,
@@ -276,7 +311,7 @@ export function ProofExportPaymentPanel({
                 Agent payment flow
               </div>
               <h2 className="mt-2 text-2xl font-black tracking-tight text-foreground">
-                Generate verified proof report
+                Generate proof bundle
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 This paid action generates a deterministic proof bundle. The export
@@ -293,6 +328,8 @@ export function ProofExportPaymentPanel({
             <Badge variant="outline">{subjectType}</Badge>
             <Badge variant="outline">x402-style exact payment</Badge>
           </div>
+
+          <PaymentStepRail status={status} />
 
           <div className="mt-5 rounded-2xl border border-border/60 bg-muted/10 p-4">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -356,7 +393,7 @@ export function ProofExportPaymentPanel({
                 )}
                 {status === "executing"
                   ? "Checking Mirror Node..."
-                  : "Verify payment and generate report"}
+                  : "Verify payment and generate bundle"}
               </Button>
             ) : null}
           </div>

@@ -33,6 +33,15 @@ const DEFAULT_SUBJECT = {
   subjectId: "e2c6f0a0-0359-5093-8551-2d76a5463dc0",
 };
 
+function shortMiddle(value: unknown, head = 26, tail = 18): string {
+  const s = String(value ?? "").trim();
+
+  if (!s) return "not selected";
+  if (s.length <= head + tail + 3) return s;
+
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
+
 function TrustTile({
   icon: Icon,
   label,
@@ -251,8 +260,8 @@ function App() {
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <DemoStep
               n="01"
-              title="Ask/search public evidence"
-              body="The free agent searches CIPHER, SAGE, dataset, proof-card, and HCS records."
+              title="Search public evidence"
+              body="Ask a plain-language question or run the demo path. The agent returns normalized evidence cards."
             />
             <DemoStep
               n="02"
@@ -276,8 +285,11 @@ function App() {
               <div className="text-sm font-semibold text-foreground">
                 Selected export target
               </div>
-              <div className="mt-1 break-all font-mono text-xs leading-5 text-muted-foreground">
-                {selectedSubject.subjectType}:{selectedSubject.subjectId}
+              <div
+                className="mt-1 break-all font-mono text-xs leading-5 text-muted-foreground"
+                title={`${selectedSubject.subjectType}:${selectedSubject.subjectId}`}
+              >
+                {selectedSubject.subjectType}:{shortMiddle(selectedSubject.subjectId)}
               </div>
             </div>
           </div>

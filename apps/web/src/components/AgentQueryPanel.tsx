@@ -142,19 +142,110 @@ function shortMiddle(value: unknown, head = 18, tail = 12): string {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
+const INTERNAL_WARNING_FRAGMENTS = [
+  "No single evidence surface was strongly identified",
+  "Local demo fallback evidence was returned",
+  "Returned local demo evidence because no live Explorer evidence matched",
+  "query compiler did not find strong domain search terms",
+  "used the safest broad evidence route",
+  "Verified-only filtering is based on",
+  "Anchored-only filtering keeps",
+  "retrieval plan",
+  "retrieval trace",
+  "compiled query",
+];
+
 function visibleWarnings(warnings: readonly string[]): string[] {
-  const hiddenFragments = [
-    "No single evidence surface was strongly identified",
-    "Local demo fallback evidence was returned",
-    "query compiler did not find strong domain search terms",
-    "used the safest broad evidence route",
-    "Verified-only filtering is based on",
-    "Anchored-only filtering keeps",
+  return Array.from(new Set(warnings))
+    .map((warning) => warning.trim())
+    .filter(Boolean)
+    .filter((warning) => {
+      return !INTERNAL_WARNING_FRAGMENTS.some((fragment) =>
+        warning.toLowerCase().includes(fragment.toLowerCase()),
+      );
+    });
+}
+
+function AgentWorkflowSteps({
+  hasResult,
+  hasSelection,
+}: Readonly<{
+  hasResult: boolean;
+  hasSelection: boolean;
+}>) {
+  const steps = [
+    {
+      n: "1",
+      title: "Search",
+      body: "Ask a question or use a suggested search.",
+      active: true,
+      complete: hasResult,
+    },
+    {
+      n: "2",
+      title: "Select",
+      body: "Choose one evidence card for export.",
+      active: hasResult,
+      complete: hasSelection,
+    },
+    {
+      n: "3",
+      title: "Verify",
+      body: "Review the proof chain and HCS metadata.",
+      active: hasSelection,
+      complete: false,
+    },
+    {
+      n: "4",
+      title: "Export",
+      body: "Create a quote, pay with wallet, and generate the bundle.",
+      active: hasSelection,
+      complete: false,
+    },
   ];
 
-  return Array.from(new Set(warnings)).filter((warning) => {
-    return !hiddenFragments.some((fragment) => warning.includes(fragment));
-  });
+  return (
+    <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/[0.05] p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-cyan-100">
+        Recommended path
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {steps.map((step) => (
+          <div
+            key={step.n}
+            className={[
+              "rounded-2xl border p-3 transition",
+              step.complete
+                ? "border-emerald-500/35 bg-emerald-500/10"
+                : step.active
+                  ? "border-cyan-400/35 bg-background/35"
+                  : "border-border/50 bg-background/20 opacity-70",
+            ].join(" ")}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className={[
+                  "flex h-7 w-7 items-center justify-center rounded-xl border text-xs font-black",
+                  step.complete
+                    ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
+                    : "border-cyan-400/35 bg-cyan-500/10 text-cyan-100",
+                ].join(" ")}
+              >
+                {step.n}
+              </div>
+              <div className="text-sm font-semibold text-foreground">
+                {step.title}
+              </div>
+            </div>
+            <div className="mt-2 text-xs leading-5 text-muted-foreground">
+              {step.body}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function AnswerSummary({ answer }: Readonly<{ answer: string }>) {
@@ -198,6 +289,35 @@ function evidenceHref(item: ExplorerAgentEvidenceItem): string | null {
   return buildVeraEvidenceHref(item);
 }
 
+function EvidenceFact({
+  label,
+  value,
+  mono = true,
+}: Readonly<{
+  label: string;
+  value: unknown;
+  mono?: boolean;
+}>) {
+  const display = shortMiddle(value, 24, 16);
+
+  return (
+    <div className="min-w-0 rounded-2xl border border-border/60 bg-background/30 p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={[
+          "mt-1 truncate text-sm font-semibold text-foreground/90",
+          mono ? "font-mono text-xs" : "",
+        ].join(" ")}
+        title={String(value ?? "")}
+      >
+        {display}
+      </div>
+    </div>
+  );
+}
+
 function EvidenceItemCard({
   item,
   selected,
@@ -210,81 +330,46 @@ function EvidenceItemCard({
   const href = evidenceHref(item);
 
   return (
-    <div
+    <article
       className={[
-        "rounded-2xl border p-4 transition",
+        "group rounded-3xl border p-5 transition",
         selected
-          ? "border-emerald-500/35 bg-emerald-500/10"
-          : "border-border/60 bg-background/25 hover:bg-muted/15",
+          ? "border-emerald-500/45 bg-emerald-500/[0.09] shadow-[0_0_32px_rgba(16,185,129,0.10)]"
+          : "border-border/60 bg-background/25 hover:border-cyan-400/35 hover:bg-muted/10",
       ].join(" ")}
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={selected ? "success" : "outline"}>
               {item.subject_type}
             </Badge>
             <Badge variant="outline">{item.network}</Badge>
             {item.hcs_transaction_id ? (
-              <Badge variant="success">HCS anchor</Badge>
+              <Badge variant="success">HCS anchored</Badge>
             ) : (
               <Badge variant="muted">No HCS tx</Badge>
             )}
-            {selected ? <Badge variant="success">selected</Badge> : null}
+            {item.proof_card_url ? (
+              <Badge variant="info">Proof card</Badge>
+            ) : null}
+            {selected ? <Badge variant="success">Selected for export</Badge> : null}
           </div>
 
-          <div className="mt-3 text-base font-black tracking-tight text-foreground">
+          <h3 className="mt-4 max-w-3xl text-xl font-black leading-7 tracking-tight text-foreground">
             {item.title}
-          </div>
+          </h3>
 
-          <div className="mt-2 text-sm leading-6 text-muted-foreground">
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
             {item.summary}
-          </div>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <div className="rounded-xl border border-border/60 bg-background/25 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Subject ID
-              </div>
-              <div className="mt-1 break-all font-mono text-xs text-foreground/80">
-                {shortMiddle(item.subject_id, 22, 14)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-background/25 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                HCS transaction
-              </div>
-              <div className="mt-1 break-all font-mono text-xs text-foreground/80">
-                {shortMiddle(item.hcs_transaction_id, 22, 14)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-background/25 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                HCS topic
-              </div>
-              <div className="mt-1 break-all font-mono text-xs text-foreground/80">
-                {item.hcs_topic_id ?? "none"}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-background/25 p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Proof card
-              </div>
-              <div className="mt-1 break-all font-mono text-xs text-foreground/80">
-                {item.proof_card_url ? "available" : "none"}
-              </div>
-            </div>
-          </div>
+          </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row xl:flex-col">
           {href ? (
             <Button asChild variant="brandOutline" size="sm">
               <a href={href} target="_blank" rel="noreferrer">
-                Open
+                Open verifier
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             </Button>
@@ -296,12 +381,23 @@ function EvidenceItemCard({
             size="sm"
             onClick={onSelect}
           >
-            Use for export
+            {selected ? "Selected" : "Select for export"}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
-    </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <EvidenceFact label="Subject ID" value={item.subject_id} />
+        <EvidenceFact label="HCS transaction" value={item.hcs_transaction_id} />
+        <EvidenceFact label="HCS topic" value={item.hcs_topic_id} />
+        <EvidenceFact
+          label="Export readiness"
+          value={item.proof_card_url ? "proof card available" : "proof bundle ready"}
+          mono={false}
+        />
+      </div>
+    </article>
   );
 }
 
@@ -346,6 +442,10 @@ export function AgentQueryPanel({
           Boolean(item.subject),
       );
   }, [result?.sources]);
+
+  const reviewWarnings = useMemo(() => {
+    return visibleWarnings(result?.warnings ?? []);
+  }, [result?.warnings]);
 
   function buildRequest(input: {
     question: string;
@@ -496,6 +596,13 @@ export function AgentQueryPanel({
     if (subject.subjectType === "hcs_transaction") {
       setHcsTransactionId(subject.subjectId);
     }
+
+    window.requestAnimationFrame(() => {
+      document.getElementById("proof-chain")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   function applyExample(example: ExampleQuery) {
@@ -588,6 +695,13 @@ export function AgentQueryPanel({
               Run demo path
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
+          </div>
+
+          <div className="mt-5">
+            <AgentWorkflowSteps
+              hasResult={Boolean(result)}
+              hasSelection={Boolean(selected.subjectId)}
+            />
           </div>
 
           <div className="mt-5 space-y-4">
@@ -718,7 +832,7 @@ export function AgentQueryPanel({
               ) : (
                 <SearchCheck className="h-4 w-4" />
               )}
-              {status === "querying" ? "Querying agent..." : "Run agent query"}
+              {status === "querying" ? "Searching evidence..." : "Search evidence"}
             </Button>
 
             <div className="flex flex-wrap gap-2">
@@ -746,10 +860,10 @@ export function AgentQueryPanel({
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-border/60 bg-background/20 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Query modifiers
-              </div>
+          <details className="rounded-2xl border border-border/60 bg-background/20 p-4">
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Advanced filters
+              </summary>
 
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
@@ -816,7 +930,7 @@ export function AgentQueryPanel({
                   Verified only
                 </label>
               </div>
-            </div>
+            </details>
         </div>
 
         <div className="p-5">
@@ -836,14 +950,14 @@ export function AgentQueryPanel({
 
               <AnswerSummary answer={result.answer} />
 
-              {visibleWarnings(result.warnings).length > 0 ? (
+              {reviewWarnings.length > 0 ? (
                 <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-amber-100">
                     <AlertTriangle className="h-4 w-4" />
                       Review notes
                     </div>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
-                      {visibleWarnings(result.warnings).map((warning) => (
+                      {reviewWarnings.map((warning) => (
                         <li key={warning}>{warning}</li>
                       ))}
                     </ul>
@@ -935,7 +1049,7 @@ export function AgentQueryPanel({
                                 size="sm"
                                 onClick={() => useSource(subject)}
                               >
-                                Use for export
+                                {selectedNow ? "Selected" : "Select for export"}
                                 <ArrowRight className="h-3.5 w-3.5" />
                               </Button>
                             </div>
@@ -943,19 +1057,6 @@ export function AgentQueryPanel({
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-              ) : null}
-
-              {result.warnings.length > 0 ? (
-                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-100" />
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      {result.warnings.map((warning) => (
-                        <div key={warning}>{warning}</div>
-                      ))}
-                    </div>
                   </div>
                 </div>
               ) : null}
