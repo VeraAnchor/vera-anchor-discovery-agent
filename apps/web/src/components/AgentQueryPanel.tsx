@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  CheckCircle2,
+  Circle,
   ExternalLink,
   Fingerprint,
   Loader2,
@@ -87,7 +89,6 @@ const EXAMPLES: readonly ExampleQuery[] = [
     sort: "highest_score",
   },
   {
-    
     label: "Search glioblastoma evidence",
     question: "Find evidence for glioblastoma",
     mode: "search",
@@ -169,40 +170,52 @@ function visibleWarnings(warnings: readonly string[]): string[] {
 function AgentWorkflowSteps({
   hasResult,
   hasSelection,
+  isQuerying,
 }: Readonly<{
   hasResult: boolean;
   hasSelection: boolean;
+  isQuerying: boolean;
 }>) {
   const steps = [
     {
       n: "1",
       title: "Search",
-      body: "Ask a question or use a suggested search.",
-      active: true,
-      complete: hasResult,
+      body: isQuerying
+        ? "Searching public evidence now."
+        : hasResult
+          ? "Search complete. Review the returned evidence cards."
+          : "Ask a question or use a suggested search.",
+      state: hasResult ? "complete" : "active",
+      status: hasResult ? "Complete" : isQuerying ? "Running" : "Start here",
     },
     {
       n: "2",
       title: "Select",
-      body: "Choose one evidence card for export.",
-      active: hasResult,
-      complete: hasSelection,
+      body: hasResult
+        ? "Choose the evidence card you want to inspect or export."
+        : "Run a search before selecting evidence.",
+      state: hasSelection ? "complete" : hasResult ? "active" : "locked",
+      status: hasSelection ? "Complete" : hasResult ? "Next" : "Locked",
     },
     {
       n: "3",
       title: "Verify",
-      body: "Review the proof chain and HCS metadata.",
-      active: hasSelection,
-      complete: false,
+      body: hasSelection
+        ? "Review the proof chain and HCS metadata for the selected record."
+        : "Select an evidence card to unlock verification.",
+      state: hasSelection ? "active" : "locked",
+      status: hasSelection ? "Ready" : "Locked",
     },
     {
       n: "4",
       title: "Export",
-      body: "Create a quote, pay with wallet, and generate the bundle.",
-      active: hasSelection,
-      complete: false,
+      body: hasSelection
+        ? "Create a quote, pay with wallet, and generate the bundle."
+        : "Select and verify evidence before creating a paid export.",
+      state: "locked",
+      status: "Final step",
     },
-  ];
+  ] as const;
 
   return (
     <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/[0.05] p-4">
@@ -210,36 +223,62 @@ function AgentWorkflowSteps({
         Recommended path
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-2">
         {steps.map((step) => (
           <div
             key={step.n}
             className={[
               "rounded-2xl border p-3 transition",
-              step.complete
+              step.state === "complete"
                 ? "border-emerald-500/35 bg-emerald-500/10"
-                : step.active
+                : step.state === "active"
                   ? "border-cyan-400/35 bg-background/35"
                   : "border-border/50 bg-background/20 opacity-70",
             ].join(" ")}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-3">
               <div
                 className={[
-                  "flex h-7 w-7 items-center justify-center rounded-xl border text-xs font-black",
-                  step.complete
+                  "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-xs font-black",
+                  step.state === "complete"
                     ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
-                    : "border-cyan-400/35 bg-cyan-500/10 text-cyan-100",
+                    : step.state === "active"
+                      ? "border-cyan-400/35 bg-cyan-500/10 text-cyan-100"
+                      : "border-border/60 bg-background/30 text-muted-foreground",
                 ].join(" ")}
               >
-                {step.n}
+                {step.state === "complete" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : step.state === "active" ? (
+                  step.n
+                ) : (
+                  <Circle className="h-3.5 w-3.5" />
+                )}
               </div>
-              <div className="text-sm font-semibold text-foreground">
-                {step.title}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-foreground">
+                    {step.title}
+                  </div>
+                  <div
+                    className={[
+                      "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                      step.state === "complete"
+                        ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
+                        : step.state === "active"
+                          ? "border-cyan-400/35 bg-cyan-500/10 text-cyan-100"
+                          : "border-border/60 bg-background/20 text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {step.status}
+                  </div>
+                </div>
+
+                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {step.body}
+                </div>
               </div>
-            </div>
-            <div className="mt-2 text-xs leading-5 text-muted-foreground">
-              {step.body}
             </div>
           </div>
         ))}
@@ -381,7 +420,7 @@ function EvidenceItemCard({
             size="sm"
             onClick={onSelect}
           >
-            {selected ? "Selected" : "Select for export"}
+            {selected ? "Selected" : "Use this record"}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -401,10 +440,10 @@ function EvidenceItemCard({
   );
 }
 
-export function AgentQueryPanel({ 
+export function AgentQueryPanel({
   selected,
   onSelectSubject,
-  onResult, 
+  onResult,
 }: Props) {
   const [mode, setMode] = useState<ExplorerAgentMode>("search");
   const [question, setQuestion] = useState("Find evidence for glioblastoma");
@@ -442,6 +481,26 @@ export function AgentQueryPanel({
           Boolean(item.subject),
       );
   }, [result?.sources]);
+
+  const selectedCurrentEvidence = useMemo(() => {
+    if (!result) return false;
+
+    const selectedKey = `${selected.subjectType}:${selected.subjectId}`;
+    const evidenceKeys = selectableEvidenceItems.map(
+      ({ subject }) => `${subject.subjectType}:${subject.subjectId}`,
+    );
+    const sourceKeys = selectableSources.map(
+      ({ subject }) => `${subject.subjectType}:${subject.subjectId}`,
+    );
+
+    return new Set([...evidenceKeys, ...sourceKeys]).has(selectedKey);
+  }, [
+    result,
+    selectableEvidenceItems,
+    selectableSources,
+    selected.subjectId,
+    selected.subjectType,
+  ]);
 
   const reviewWarnings = useMemo(() => {
     return visibleWarnings(result?.warnings ?? []);
@@ -568,20 +627,6 @@ export function AgentQueryPanel({
       setResult(completed);
       onResult?.(completed);
       setStatus("idle");
-
-      const firstEvidenceSubject = completed.evidence_items
-        .map(subjectFromEvidenceItem)
-        .find(Boolean);
-
-      const firstSourceSubject = completed.sources
-        .map(subjectFromAgentSource)
-        .find(Boolean);
-
-      const firstSubject = firstEvidenceSubject ?? firstSourceSubject;
-
-      if (firstSubject) {
-        useSource(firstSubject);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AGENT_QUERY_FAILED");
       setStatus("failed");
@@ -596,13 +641,6 @@ export function AgentQueryPanel({
     if (subject.subjectType === "hcs_transaction") {
       setHcsTransactionId(subject.subjectId);
     }
-
-    window.requestAnimationFrame(() => {
-      document.getElementById("proof-chain")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
   }
 
   function applyExample(example: ExampleQuery) {
@@ -700,7 +738,8 @@ export function AgentQueryPanel({
           <div className="mt-5">
             <AgentWorkflowSteps
               hasResult={Boolean(result)}
-              hasSelection={Boolean(selected.subjectId)}
+              hasSelection={selectedCurrentEvidence}
+              isQuerying={status === "querying"}
             />
           </div>
 
@@ -861,76 +900,76 @@ export function AgentQueryPanel({
           </div>
 
           <details className="rounded-2xl border border-border/60 bg-background/20 p-4">
-              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Advanced filters
-              </summary>
+            <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Advanced filters
+            </summary>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
-                  Sort
-                  <select
-                    value={sort}
-                    onChange={(event) =>
-                      setSort(event.target.value as ExplorerAgentSort)
-                    }
-                    className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                  >
-                    <option value="relevance">Relevance</option>
-                    <option value="latest">Latest</option>
-                    <option value="highest_score">Highest score</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
-                  Time window
-                  <select
-                    value={timeWindow}
-                    onChange={(event) =>
-                      setTimeWindow(event.target.value as ExplorerAgentTimeWindow)
-                    }
-                    className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                  >
-                    <option value="any">Any</option>
-                    <option value="today">Today</option>
-                    <option value="last_24h">Last 24h</option>
-                    <option value="last_7d">Last 7d</option>
-                    <option value="last_30d">Last 30d</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="mt-3 grid gap-1 text-xs font-semibold text-muted-foreground">
-                Dataset key
-                <input
-                  value={datasetKey}
-                  onChange={(event) => setDatasetKey(event.target.value)}
-                  placeholder="Optional dataset key for score-aware search"
-                  className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-cyan-400/60"
-                />
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
+                Sort
+                <select
+                  value={sort}
+                  onChange={(event) =>
+                    setSort(event.target.value as ExplorerAgentSort)
+                  }
+                  className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                >
+                  <option value="relevance">Relevance</option>
+                  <option value="latest">Latest</option>
+                  <option value="highest_score">Highest score</option>
+                </select>
               </label>
 
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/25 px-3 py-2 text-sm font-semibold text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={anchoredOnly}
-                    onChange={(event) => setAnchoredOnly(event.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  Anchored only
-                </label>
+              <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
+                Time window
+                <select
+                  value={timeWindow}
+                  onChange={(event) =>
+                    setTimeWindow(event.target.value as ExplorerAgentTimeWindow)
+                  }
+                  className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                >
+                  <option value="any">Any</option>
+                  <option value="today">Today</option>
+                  <option value="last_24h">Last 24h</option>
+                  <option value="last_7d">Last 7d</option>
+                  <option value="last_30d">Last 30d</option>
+                </select>
+              </label>
+            </div>
 
-                <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/25 px-3 py-2 text-sm font-semibold text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={verifiedOnly}
-                    onChange={(event) => setVerifiedOnly(event.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  Verified only
-                </label>
-              </div>
-            </details>
+            <label className="mt-3 grid gap-1 text-xs font-semibold text-muted-foreground">
+              Dataset key
+              <input
+                value={datasetKey}
+                onChange={(event) => setDatasetKey(event.target.value)}
+                placeholder="Optional dataset key for score-aware search"
+                className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-cyan-400/60"
+              />
+            </label>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/25 px-3 py-2 text-sm font-semibold text-foreground/90">
+                <input
+                  type="checkbox"
+                  checked={anchoredOnly}
+                  onChange={(event) => setAnchoredOnly(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Anchored only
+              </label>
+
+              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/25 px-3 py-2 text-sm font-semibold text-foreground/90">
+                <input
+                  type="checkbox"
+                  checked={verifiedOnly}
+                  onChange={(event) => setVerifiedOnly(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Verified only
+              </label>
+            </div>
+          </details>
         </div>
 
         <div className="p-5">
@@ -954,15 +993,15 @@ export function AgentQueryPanel({
                 <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-amber-100">
                     <AlertTriangle className="h-4 w-4" />
-                      Review notes
-                    </div>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
-                      {reviewWarnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
+                    Review notes
                   </div>
-                ) : null}
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-muted-foreground">
+                    {reviewWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {selectableEvidenceItems.length > 0 ? (
                 <div>
@@ -1049,7 +1088,7 @@ export function AgentQueryPanel({
                                 size="sm"
                                 onClick={() => useSource(subject)}
                               >
-                                {selectedNow ? "Selected" : "Select for export"}
+                                {selectedNow ? "Selected" : "Use this record"}
                                 <ArrowRight className="h-3.5 w-3.5" />
                               </Button>
                             </div>
