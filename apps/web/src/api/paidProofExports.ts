@@ -1,3 +1,5 @@
+import { agentApiUrl } from "@/api/agentApiClient";
+
 export type HederaExactPaymentRequirement = Readonly<{
   scheme: "exact";
   kind: "hedera_hbar_transfer";
@@ -89,7 +91,7 @@ async function readJsonOrThrow<T>(response: Response): Promise<T> {
 export async function createProofExportQuote(
   input: CreateProofExportQuoteInput,
 ): Promise<ProofExportQuote> {
-  const response = await fetch("/v1/quotes", {
+  const response = await fetch(agentApiUrl("/v1/quotes"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -109,7 +111,9 @@ export async function createProofExportQuote(
 export async function executePaidAction(
   input: ExecutePaidActionInput,
 ): Promise<ExecutePaidActionResult> {
-  const response = await fetch(`/v1/actions/${encodeURIComponent(input.actionId)}/execute`, {
+  const response = await fetch(
+    agentApiUrl(`/v1/actions/${encodeURIComponent(input.actionId)}/execute`),
+    {
     method: "POST",
     headers: {
       "content-type": "application/json",

@@ -1,3 +1,5 @@
+import { agentApiUrl } from "@/api/agentApiClient";
+
 const HEDERA_TRANSACTION_ID_RE = /^0\.0\.\d+@\d{1,20}\.\d{1,9}$/;
 
 export type AgentSubjectType =
@@ -98,22 +100,6 @@ export type ExplorerAgentQueryInput = Readonly<{
   verifiedOnly?: boolean | null;
   anchoredOnly?: boolean | null;
 }>;
-
-const DEFAULT_AGENT_API_BASE_URL = import.meta.env.DEV
-  ? "https://agentapi.veraanchor.com"
-  : "http://localhost:5001";
-
-export const AGENT_API_BASE_URL = String(
-  import.meta.env.VITE_AGENT_API_BASE_URL ?? DEFAULT_AGENT_API_BASE_URL,
-).replace(/\/+$/g, "");
-
-function agentApiUrl(path: string): string {
-  if (!path.startsWith("/")) {
-    throw new Error("AGENT_API_PATH_MUST_BE_ABSOLUTE");
-  }
-
-  return `${AGENT_API_BASE_URL}${path}`;
-}
 
 async function readJsonOrThrow<T>(response: Response): Promise<T> {
   const text = await response.text();
