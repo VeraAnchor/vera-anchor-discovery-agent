@@ -154,6 +154,29 @@ export async function queryExplorerAgent(
   };
 }
 
+function normalizeHederaTransactionId(value: unknown): string {
+  const decoded = (() => {
+    const raw = String(value ?? "").trim();
+
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  })();
+
+  if (HEDERA_TRANSACTION_ID_RE.test(decoded)) {
+    return decoded;
+  }
+
+  const mirror = decoded.match(/^(0\.0\.\d+)-(\d{1,20})-(\d{1,9})$/);
+  if (mirror) {
+    return `${mirror[1]}@${mirror[2]}.${mirror[3]}`;
+  }
+
+  return decoded;
+}
+
 export function subjectFromAgentSource(
   source: ExplorerAgentSource,
 ): { subjectType: AgentSubjectType; subjectId: string } | null {
@@ -162,7 +185,11 @@ export function subjectFromAgentSource(
 
   const [rawType, ...rest] = label.split(":");
   const subjectType = rawType as AgentSubjectType;
-  const subjectId = rest.join(":") || ref;
+  const rawSubjectId = rest.join(":") || ref;
+  const subjectId =
+    subjectType === "hcs_transaction"
+      ? normalizeHederaTransactionId(rawSubjectId)
+      : rawSubjectId;
 
   if (
     subjectType !== "cipher_result" &&
@@ -198,7 +225,7 @@ export function subjectFromEvidenceItem(
 const VERA_PUBLIC_SITE_URL = "https://veraanchor.com";
 
 export function isHederaTransactionId(value: unknown): boolean {
-  return HEDERA_TRANSACTION_ID_RE.test(String(value ?? "").trim());
+  return HEDERA_TRANSACTION_ID_RE.test(normalizeHederaTransactionId(value));
 }
 
 function absoluteVeraHref(path: string): string {
@@ -209,7 +236,10 @@ export function buildVeraSubjectHref(input: {
   subjectType: AgentSubjectType;
   subjectId: string;
 }): string {
-  const subjectId = String(input.subjectId ?? "").trim();
+  const subjectId =
+    input.subjectType === "hcs_transaction"
+      ? normalizeHederaTransactionId(input.subjectId)
+      : String(input.subjectId ?? "").trim();
   const encodedSubjectId = encodeURIComponent(subjectId);
 
   if (input.subjectType === "cipher_result") {

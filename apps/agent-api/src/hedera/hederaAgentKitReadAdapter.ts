@@ -32,6 +32,15 @@ function normalizeTransactionId(value: unknown): string {
     throwHttp("HEDERA_TRANSACTION_ID_REQUIRED", 400);
   }
 
+   if (HCS_TRANSACTION_ID_RE.test(s)) {
+    return s;
+  }
+
+  const mirror = s.match(/^(0\.0\.\d+)-(\d{1,20})-(\d{1,9})$/);
+  if (mirror) {
+    return `${mirror[1]}@${mirror[2]}.${mirror[3]}`;
+  }
+
   if (!HCS_TRANSACTION_ID_RE.test(s)) {
     throwHttp("INVALID_HEDERA_TRANSACTION_ID", 400);
   }

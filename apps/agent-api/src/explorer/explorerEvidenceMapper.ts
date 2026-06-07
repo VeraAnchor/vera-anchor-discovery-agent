@@ -38,6 +38,23 @@ function firstString(...values: unknown[]): string {
   return "";
 }
 
+function canonicalHcsTransactionId(value: unknown): string {
+  const s = cleanString(value);
+
+  if (!s) return "";
+
+  if (/^0\.0\.\d+@\d{1,20}\.\d{1,9}$/.test(s)) {
+    return s;
+  }
+
+  const mirror = s.match(/^(0\.0\.\d+)-(\d{1,20})-(\d{1,9})$/);
+  if (mirror) {
+    return `${mirror[1]}@${mirror[2]}.${mirror[3]}`;
+  }
+
+  return s;
+}
+
 function firstBoolean(...values: unknown[]): boolean | null {
   for (const value of values) {
     if (typeof value === "boolean") return value;
@@ -342,7 +359,9 @@ export function mapExplorerHcsTransactionToEvidence(
   const row = unwrapResultEnvelope(value);
   if (!row) return null;
 
-  const transactionId = firstString(row.transaction_id, row.hcs_transaction_id, row.id);
+  const transactionId = canonicalHcsTransactionId(
+    firstString(row.transaction_id, row.hcs_transaction_id),
+  );
   const messageId = firstString(row.message_id, row.hcs_message_id);
   const topicId = firstString(row.topic_id, row.hcs_topic_id);
   const consensusTimestamp = firstString(row.consensus_timestamp);
