@@ -190,6 +190,41 @@ export class AgentReceiptRepo extends AgentRepoBase {
     }
   }
 
+  async updatePayloadAndHash(
+    input: {
+      id: string;
+      receiptHash: string;
+      artifactHash?: string | null;
+      payload: Record<string, unknown>;
+    },
+    { client }: { client: pg.PoolClient },
+  ): Promise<AgentReceiptRow | null> {
+    const id = normalizeUuid(input.id, "id");
+    const receiptHash = normalizeHash(input.receiptHash, "receipt_hash");
+    const artifactHash = normalizeOptionalHash(input.artifactHash, "artifact_hash");
+    const payload = normalizeJsonObject(input.payload, "payload");
+
+    const sql = `
+      UPDATE agent.receipts
+      SET
+        receipt_hash = $2::text,
+        artifact_hash = $3::text,
+        payload = $4::jsonb
+      WHERE id = $1::uuid
+        AND deleted_at IS NULL
+      RETURNING *;
+    `;
+
+    const { rows } = await this.query<AgentReceiptRow>(client, sql, [
+      id,
+      receiptHash,
+      artifactHash,
+      payload,
+    ]);
+
+    return rows[0] ?? null;
+  }
+
   async getById(
     id: string,
     { client }: { client: pg.PoolClient },
