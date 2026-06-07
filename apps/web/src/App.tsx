@@ -149,7 +149,7 @@ function App() {
 
               <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
                 Use the free agent to inspect public CIPHER, SAGE, dataset, and HCS
-                records. Pay with external HBAR only when you want a deterministic
+                records. Pay with external HBAR when you want a deterministic
                 proof export.
               </p>
 
