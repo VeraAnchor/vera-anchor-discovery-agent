@@ -91,8 +91,10 @@ function DemoStep({
 function App() {
   const [selectedSubject, setSelectedSubject] = useState(DEFAULT_SUBJECT);
   const [lastAgentResult, setLastAgentResult] = useState<ExplorerAgentQueryResult | null>(null);
+  const [hasUserSelectedSubject, setHasUserSelectedSubject] = useState(false);
   function handleSelectSubject(subject: typeof DEFAULT_SUBJECT) {
     setSelectedSubject(subject);
+    setHasUserSelectedSubject(true);
   }
 
   const verifierHref = buildVeraSubjectHref({
@@ -292,7 +294,9 @@ function App() {
                 className="mt-1 break-all font-mono text-xs leading-5 text-muted-foreground"
                 title={`${selectedSubject.subjectType}:${selectedSubject.subjectId}`}
               >
-                {selectedSubject.subjectType}:{shortMiddle(selectedSubject.subjectId)}
+                {hasUserSelectedSubject
+                  ? `${selectedSubject.subjectType}:${shortMiddle(selectedSubject.subjectId)}`
+                  : "No evidence selected yet. Run a search or demo path."}
               </div>
             </div>
           </div>

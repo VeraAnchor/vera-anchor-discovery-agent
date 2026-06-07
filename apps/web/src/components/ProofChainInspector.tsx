@@ -100,6 +100,12 @@ export function ProofChainInspector({ selected, result }: Props) {
 
   const hcsTopicId = verification?.topic_id ?? item?.hcs_topic_id ?? null;
 
+  const hasLoadedSelectedEvidence = Boolean(
+    item ||
+      verification ||
+      (selected.subjectType === "hcs_transaction" && hcsTransactionId),
+  );
+
   return (
     <GlassCard tone="glass" className="overflow-hidden border-cyan-500/20 p-0">
       <div className="border-b border-border/60 bg-background/20 p-5">
@@ -150,6 +156,43 @@ export function ProofChainInspector({ selected, result }: Props) {
         </div>
       </div>
 
+       {!hasLoadedSelectedEvidence ? (
+        <div className="p-5">
+          <div className="rounded-2xl border border-border/60 bg-background/25 p-5">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-2">
+                <Waypoints className="h-4 w-4 text-cyan-100" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground">
+                  No loaded evidence record selected yet.
+                </div>
+
+                <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Run a search and choose “Use this record,” or run the demo path.
+                  This inspector will populate after the selected record is present
+                  in the current agent response or after HCS verification returns
+                  structured metadata.
+                </div>
+
+                <div className="mt-3 break-all rounded-xl border border-border/60 bg-background/30 p-3 font-mono text-xs leading-5 text-muted-foreground">
+                  Current target: {selected.subjectType}:{selected.subjectId}
+                </div>
+
+                {href ? (
+                  <Button asChild variant="brandOutline" size="sm" className="mt-4">
+                    <a href={href} target="_blank" rel="noreferrer">
+                      Open verifier
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="grid gap-0 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="border-b border-border/60 p-5 xl:border-b-0 xl:border-r">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -287,6 +330,7 @@ export function ProofChainInspector({ selected, result }: Props) {
           )}
         </div>
       </div>
+      )}
     </GlassCard>
   );
 }
